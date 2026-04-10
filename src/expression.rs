@@ -212,7 +212,7 @@ fn parse_expression(
     // The file number where the expression is located.
     // Used for error reporting.
     //
-    // Because expression consisting of tokens that may be
+    // Because the expression consists of tokens that may be
     // expanded from macros defined in other files, although
     // `token_with_locations` contains location information, but
     // we do not know which file the expression is originally from,
@@ -299,7 +299,7 @@ impl<'a> ExpressionParser<'a> {
                     Err(PreprocessFileError::new(
                         self.last_location.file_number,
                         PreprocessError::MessageWithPosition(
-                            format!("Expect token: {}.", token_description),
+                            format!("Expected token: {}.", token_description),
                             self.last_location.range.start,
                         ),
                     ))
@@ -308,7 +308,7 @@ impl<'a> ExpressionParser<'a> {
             None => Err(PreprocessFileError::new(
                 self.current_file_number,
                 PreprocessError::UnexpectedEndOfDocument(format!(
-                    "Expect token: {}.",
+                    "Expected token: {}.",
                     token_description
                 )),
             )),
@@ -495,7 +495,7 @@ impl ExpressionParser<'_> {
                         PreprocessFileError::new(
                             location.file_number,
                             PreprocessError::MessageWithRange(
-                                "Invalid integer number.".to_string(),
+                                "Invalid integer literal.".to_string(),
                                 location.range,
                             ),
                         )
@@ -518,7 +518,7 @@ impl ExpressionParser<'_> {
                     Err(PreprocessFileError::new(
                         location.file_number,
                         PreprocessError::MessageWithRange(
-                            "Expect a macro, an integer number, or an operator.".to_string(),
+                            "Expected a macro, an integer literal, or an operator.".to_string(),
                             location.range,
                         ),
                     ))
@@ -823,7 +823,7 @@ mod tests {
         assert_eq!(format("0b101010"), "42");
         assert_eq!(format("052"), "42");
 
-        // Test floating point numbers.
+        // Test floating-point numbers.
         assert!(matches!(
             build_expresson("3.14"),
             Err(PreprocessFileError {

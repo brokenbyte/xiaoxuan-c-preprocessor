@@ -66,7 +66,7 @@ pub enum Statement {
     // Parameter names also can be written as `__limit__`, `__prefix__`,
     // `__suffix__`, and `__if_empty__`.
     //
-    // ANCPP only supports token sequence consist of character or integer number separated by commas.
+    // ANCPP only supports token sequences consisting of characters or integers separated by commas.
     // e.g.,
     //
     // - `#embed "file.txt" prefix(0xEF, 0xBB, 0xBF) suffix('\0')`      // valid,
@@ -86,7 +86,7 @@ pub enum Statement {
     //     is_system_file: bool,
     //
     //     /* Specifies the maximum number of bytes to output from the resource. */
-    //     /* This limit does not include the prefix or suffix, and does not limit the numbers of bytes of `if_empty`. */
+    //     /* This limit does not include the prefix or suffix, and does not limit the number of bytes of `if_empty`. */
     //     limit: Option<usize>,
     //
     //     /* Sequence to append to the output if the resource is not empty. */

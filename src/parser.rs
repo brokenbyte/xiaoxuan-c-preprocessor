@@ -92,11 +92,11 @@ impl<'a> Parser<'a> {
         match self.next_token() {
             Some(Token::Identifier(id)) => Ok(id),
             Some(_) => Err(PreprocessError::MessageWithPosition(
-                "Expect an identifier.".to_owned(),
+                "Expected an identifier.".to_owned(),
                 self.last_range.start,
             )),
             None => Err(PreprocessError::UnexpectedEndOfDocument(
-                "Expect an identifier.".to_owned(),
+                "Expected an identifier.".to_owned(),
             )),
         }
     }
@@ -110,11 +110,11 @@ impl<'a> Parser<'a> {
         match self.next_token() {
             Some(Token::Identifier(id)) if id == identifier => Ok(id),
             Some(_) => Err(PreprocessError::MessageWithPosition(
-                format!("Expect identifier \"{}\".", identifier),
+                format!("Expected identifier \"{}\".", identifier),
                 self.last_range.start,
             )),
             None => Err(PreprocessError::UnexpectedEndOfDocument(format!(
-                "Expect identifier \"{}\".",
+                "Expected identifier \"{}\".",
                 identifier
             ))),
         }
@@ -124,11 +124,11 @@ impl<'a> Parser<'a> {
         match self.next_token() {
             Some(Token::String(s, t)) => Ok((s, t)),
             Some(_) => Err(PreprocessError::MessageWithPosition(
-                "Expect a string.".to_owned(),
+                "Expected a string literal.".to_owned(),
                 self.last_range.start,
             )),
             None => Err(PreprocessError::UnexpectedEndOfDocument(
-                "Expect a string.".to_owned(),
+                "Expected a string literal.".to_owned(),
             )),
         }
     }
@@ -137,7 +137,7 @@ impl<'a> Parser<'a> {
         match self.next_token() {
             Some(Token::_DirectiveEnd) => Ok(()),
             Some(_) => Err(PreprocessError::MessageWithPosition(
-                "Expect a newline.".to_owned(),
+                "Expected a newline.".to_owned(),
                 self.last_range.start,
             )),
             None => Ok(()), // EOF is acceptable here
@@ -148,7 +148,7 @@ impl<'a> Parser<'a> {
         match self.next_token() {
             Some(Token::_DirectiveEnd) => Ok(()),
             _ => Err(PreprocessError::MessageWithPosition(
-                "Expect a newline.".to_owned(),
+                "Expected a newline.".to_owned(),
                 self.last_range.start,
             )),
         }
@@ -167,13 +167,13 @@ impl<'a> Parser<'a> {
                     Ok(())
                 } else {
                     Err(PreprocessError::MessageWithPosition(
-                        format!("Expect token: {}.", token_description),
+                        format!("Expected token: {}.", token_description),
                         self.last_range.start,
                     ))
                 }
             }
             None => Err(PreprocessError::UnexpectedEndOfDocument(format!(
-                "Expect token: {}.",
+                "Expected token: {}.",
                 token_description
             ))),
         }
@@ -260,7 +260,7 @@ impl Parser<'_> {
                                     // Branches without preceding `if` are invalid.
                                     return Err(PreprocessError::MessageWithRange(
                                         format!(
-                                            "Missing `if` (or `ifdef`, `ifndef`) directive before `{}`.",
+                                            "Missing `#if` (or `#ifdef`, `#ifndef`) before `{}`.",
                                             name
                                         ),
                                         *self.peek_range(0).unwrap(),
@@ -308,7 +308,7 @@ impl Parser<'_> {
                         }
                         _ => {
                             return Err(PreprocessError::MessageWithPosition(
-                                "Expect a preprocessor directive after `#`.".to_owned(),
+                                "Expected a preprocessor directive after `#`.".to_owned(),
                                 self.peek_range(0).unwrap().start,
                             ));
                         }
@@ -318,7 +318,7 @@ impl Parser<'_> {
                     // while it is valid in syntax, it is not allowed in ANCPP
                     // because it's likely a coding mistake.
                     return Err(PreprocessError::MessageWithPosition(
-                        "NULL preprocessor directive is not allowed, expected a directive after `#`.".to_owned(),
+                        "Null preprocessor directives are not allowed; expected a directive after `#`.".to_owned(),
                         self.peek_range(0).unwrap().start,
                     ));
                 }
@@ -382,7 +382,7 @@ impl Parser<'_> {
                     }
                     _ => {
                         return Err(PreprocessError::MessageWithPosition(
-                            "Expect an identifier in macro parameters.".to_owned(),
+                            "Expected an identifier in macro parameters.".to_owned(),
                             parser.peek_range(0).unwrap().start,
                         ));
                     }
@@ -530,13 +530,13 @@ impl Parser<'_> {
             }
             Some(_) => {
                 return Err(PreprocessError::MessageWithPosition(
-                    "Expect an identifier follows directive `#define`.".to_owned(),
+                    "Expected an identifier after directive `#define`.".to_owned(),
                     self.peek_range(0).unwrap().start,
                 ));
             }
             None => {
                 return Err(PreprocessError::UnexpectedEndOfDocument(
-                    "Expect an identifier follows directive `#define`.".to_owned(),
+                    "Expected an identifier after directive `#define`.".to_owned(),
                 ));
             }
         };
@@ -575,12 +575,12 @@ impl Parser<'_> {
         if components.is_empty() {
             if self.peek_range(0).is_some() {
                 return Err(PreprocessError::MessageWithPosition(
-                    "Expect parameters after `#include`.".to_owned(),
+                    "Expected a file path or macro name after `#include`.".to_owned(),
                     self.peek_range(0).unwrap().start,
                 ));
             } else {
                 return Err(PreprocessError::UnexpectedEndOfDocument(
-                    "Expect parameters after `#include`.".to_owned(),
+                    "Expected a file path or macro name after `#include`.".to_owned(),
                 ));
             }
         }
@@ -623,12 +623,12 @@ impl Parser<'_> {
         if components.is_empty() {
             if self.peek_range(0).is_some() {
                 return Err(PreprocessError::MessageWithPosition(
-                    "Expect parameters after `#embed`.".to_owned(),
+                    "Expected a file path or macro name after `#embed`.".to_owned(),
                     self.peek_range(0).unwrap().start,
                 ));
             } else {
                 return Err(PreprocessError::UnexpectedEndOfDocument(
-                    "Expect parameters after `#embed`.".to_owned(),
+                    "Expected a file path or macro name after `#embed`.".to_owned(),
                 ));
             }
         }
@@ -721,7 +721,7 @@ impl Parser<'_> {
 
                     if expression.is_empty() {
                         return Err(PreprocessError::MessageWithPosition(
-                            "Expect an expression after `#if` or `#elif`.".to_owned(),
+                            "Expected an expression after `#if` or `#elif`.".to_owned(),
                             self.last_range.start,
                         ));
                     }
@@ -838,12 +838,12 @@ impl Parser<'_> {
         if components.is_empty() {
             if self.peek_range(0).is_some() {
                 return Err(PreprocessError::MessageWithPosition(
-                    "Expect pragma parameters after `#pragma`.".to_owned(),
+                    "Expected pragma parameters after `#pragma`.".to_owned(),
                     self.peek_range(0).unwrap().start,
                 ));
             } else {
                 return Err(PreprocessError::UnexpectedEndOfDocument(
-                    "Expect pragma parameters after `#pragma`.".to_owned(),
+                    "Expected pragma parameters after `#pragma`.".to_owned(),
                 ));
             }
         }
@@ -893,7 +893,7 @@ mod tests {
             "#pragma STDC CX_LIMITED_RANGE DEFAULT\n"
         );
 
-        // err: missing name and parameters
+        // Error: missing name and parameters
         assert!(matches!(
             parse_from_str("#pragma\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -906,7 +906,7 @@ mod tests {
             ))
         ));
 
-        // err: missing name and parameters (without newline)
+        // Error: missing name and parameters (without newline)
         assert!(matches!(
             parse_from_str("#pragma"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
@@ -942,7 +942,7 @@ mod tests {
             "#define SHOW_LIST(...) puts ( __VA_ARGS__ )\n"
         );
 
-        // err: missing identifier after `#define`
+        // Error: missing identifier after `#define`
         assert!(matches!(
             parse_from_str("#define\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -955,7 +955,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid type token after `#define`
+        // Error: invalid type token after `#define`
         assert!(matches!(
             parse_from_str("#define 123"),
             Err(PreprocessError::MessageWithPosition(
@@ -968,13 +968,13 @@ mod tests {
             ))
         ));
 
-        // err: unbalanced parentheses in definition
+        // Error: unbalanced parentheses in definition
         assert!(matches!(
             parse_from_str("#define FOO for ("),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: unbalanced parentheses in definition
+        // Error: unbalanced parentheses in definition
         assert!(matches!(
             parse_from_str("#define FOO for (\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -987,7 +987,7 @@ mod tests {
             ))
         ));
 
-        // err: unbalanced parentheses in definition
+        // Error: unbalanced parentheses in definition
         assert!(matches!(
             parse_from_str("#define FOO for (;;){\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -1000,7 +1000,7 @@ mod tests {
             ))
         ));
 
-        // err: unbalanced brace in definition
+        // Error: unbalanced brace in definition
         assert!(matches!(
             parse_from_str("#define FOO {a)\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -1013,7 +1013,7 @@ mod tests {
             ))
         ));
 
-        // err: unbalanced bracket in definition
+        // Error: unbalanced bracket in definition
         assert!(matches!(
             parse_from_str("#define FOO [a)\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -1026,14 +1026,14 @@ mod tests {
             ))
         ));
 
-        // err: unbalanced double quote in definition
+        // Error: unbalanced double quote in definition
         // The actual error is that the parser expects the end of the string literal
         assert!(matches!(
             parse_from_str("#define FOO \"a\n"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: unbalanced double quote in definition
+        // Error: unbalanced double quote in definition
         // The actual error is that the parser expects the end of the character literal
         assert!(matches!(
             parse_from_str("#define FOO 'a\n"),
@@ -1052,7 +1052,7 @@ mod tests {
     fn test_parse_undef() {
         assert_eq!(format("#undef FOO"), "#undef FOO\n");
 
-        // err: missing identifier after `#undef`
+        // Error: missing identifier after `#undef`
         assert!(matches!(
             parse_from_str("#undef\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -1077,7 +1077,7 @@ mod tests {
             "#include \"my_header.h\"\n"
         );
 
-        // err: missing file path or macro name after `#include`
+        // Error: missing file path or macro name after `#include`
         assert!(matches!(
             parse_from_str("#include\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -1108,7 +1108,7 @@ mod tests {
             "#embed </dev/random> limit ( 100 ) prefix ( 11 , 13 ) suffix ( '\\x00' ) if_empty ( 'a' , 'b' , 0 )\n"
         );
 
-        // err: missing file path or macro name after `#embed`
+        // Error: missing file path or macro name after `#embed`
         assert!(matches!(
             parse_from_str("#embed\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -1284,7 +1284,7 @@ mod tests {
 #endif\n"
         );
 
-        // err: missing condition expression after `#if`
+        // Error: missing condition expression after `#if`
         assert!(matches!(
             parse_from_str("#if\n#endif"),
             Err(PreprocessError::MessageWithPosition(
@@ -1297,7 +1297,7 @@ mod tests {
             ))
         ));
 
-        // err: missing identifier after `#ifdef`
+        // Error: missing identifier after `#ifdef`
         assert!(matches!(
             parse_from_str("#ifdef\n#endif"),
             Err(PreprocessError::MessageWithPosition(
@@ -1310,7 +1310,7 @@ mod tests {
             ))
         ));
 
-        // err: extraneous token after condition expression
+        // Error: extraneous token after condition expression
         assert!(matches!(
             parse_from_str(
                 "\
@@ -1326,7 +1326,7 @@ mod tests {
             ))
         ));
 
-        // err: incomplete structure, missing `#if`, encountered `#endif`
+        // Error: incomplete structure, missing `#if`, encountered `#endif`
         assert!(matches!(
             parse_from_str("a\n#endif"),
             Err(PreprocessError::MessageWithRange(
@@ -1346,7 +1346,7 @@ mod tests {
             ))
         ));
 
-        // err: incomplete structure, missing `#if`, encountered `#else`
+        // Error: incomplete structure, missing `#if`, encountered `#else`
         assert!(matches!(
             parse_from_str("a\n#else"),
             Err(PreprocessError::MessageWithRange(
@@ -1366,7 +1366,7 @@ mod tests {
             ))
         ));
 
-        // err: syntex error, extraneous tokens after `#else`
+        // Error: syntax error, extraneous tokens after `#else`
         assert!(matches!(
             parse_from_str("#ifdef FOO\n#else 123\n#endif"),
             Err(PreprocessError::MessageWithPosition(
@@ -1379,7 +1379,7 @@ mod tests {
             ))
         ));
 
-        // err: syntex error, extraneous tokens after `#endif`
+        // Error: syntax error, extraneous tokens after `#endif`
         assert!(matches!(
             parse_from_str("#ifdef FOO\n#endif 123"),
             Err(PreprocessError::MessageWithPosition(
@@ -1406,7 +1406,7 @@ mod tests {
             }
         );
 
-        // err: missing error message after `#error`
+        // Error: missing error message after `#error`
         assert!(matches!(
             parse_from_str("#error\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -1419,7 +1419,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid token after `#error`
+        // Error: invalid token after `#error`
         assert!(matches!(
             parse_from_str("#error 123"),
             Err(PreprocessError::MessageWithPosition(
@@ -1446,7 +1446,7 @@ mod tests {
             }
         );
 
-        // err: missing warning message after `#warning`
+        // Error: missing warning message after `#warning`
         assert!(matches!(
             parse_from_str("#warning\n"),
             Err(PreprocessError::MessageWithPosition(
@@ -1459,7 +1459,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid token after `#warning`
+        // Error: invalid token after `#warning`
         assert!(matches!(
             parse_from_str("#warning 123"),
             Err(PreprocessError::MessageWithPosition(

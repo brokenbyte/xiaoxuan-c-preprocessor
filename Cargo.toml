@@ -1,6 +1,6 @@
 [package]
 name = "ancpp"
-version = "0.1.2"
+version = "1.0.0"
 edition = "2024"
 description = "A C preprocessor compliant with C23 standard implemented in Rust."
 license = "MPL-2.0"

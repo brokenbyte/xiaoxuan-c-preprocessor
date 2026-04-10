@@ -20,7 +20,7 @@ use crate::{
 /// 2. Trigraph sequences are replaced with their corresponding single characters if enabled. (ANCPP does not support)
 /// 3. Lines ending with a backslash ('\') are joined with the following line.
 /// 4. All comments are replaced by a single space character.
-/// 5. Remove the shebang (`#!`) line. (ANCPP new added)
+/// 5. Remove the shebang (`#!`) line. (ANCPP extension)
 pub fn initialize(source_text: &str) -> Result<Vec<CharWithPosition>, PreprocessError> {
     let mut chars = source_text.chars();
     let mut char_position_iter = CharsWithPositionIter::new(&mut chars);

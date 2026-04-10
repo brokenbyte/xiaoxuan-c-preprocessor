@@ -35,7 +35,7 @@ pub fn lex_from_str(source_text: &str) -> Result<Vec<TokenWithRange>, Preprocess
 /// Initialization includes:
 /// - Lines ending with a backslash ('\') are joined with the following line.
 /// - All comments are replaced by a single space character.
-/// - Remove the shebang (`#!`) line. (ANCPP new added)
+/// - Remove the shebang (`#!`) line. (ANCPP extension)
 ///
 /// See `initialize()` for more details.
 pub fn lex_from_clean_str(clean_source_text: &str) -> Result<Vec<TokenWithRange>, PreprocessError> {
@@ -641,12 +641,12 @@ impl Lexer<'_> {
                             .peek_char_and_anyof(2, &['<', '>', '(', ')', '=', '/', '\'', '!', '-'])
                         {
                             return Err(PreprocessError::MessageWithRange(
-                                "Trigraphs are disabled".to_owned(),
+                                "Trigraphs are not supported.".to_owned(),
                                 Range::from_position_and_length(self.peek_position(0).unwrap(), 3),
                             ));
                         } else {
                             return Err(PreprocessError::MessageWithRange(
-                                "Unsupported token '??'".to_owned(),
+                                "Unsupported token `??`.".to_owned(),
                                 Range::from_position_and_length(self.peek_position(0).unwrap(), 2),
                             ));
                         }
@@ -1018,7 +1018,7 @@ impl Lexer<'_> {
                 }
                 _ => {
                     return Err(PreprocessError::MessageWithPosition(
-                        format!("Invalid char '{}' for identifier.", current_char),
+                        format!("Invalid character '{}' for identifier.", current_char),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
@@ -1090,7 +1090,7 @@ impl Lexer<'_> {
                 '.' => {
                     if found_point {
                         return Err(PreprocessError::MessageWithPosition(
-                            "Decimal number can not have multiple '.' characters.".to_owned(),
+                            "Decimal number cannot have multiple '.' characters.".to_owned(),
                             *self.peek_position(0).unwrap(),
                         ));
                     } else {
@@ -1106,7 +1106,7 @@ impl Lexer<'_> {
                 'e' | 'E' => {
                     if found_e {
                         return Err(PreprocessError::MessageWithPosition(
-                            "Decimal number can not have multiple 'e' characters.".to_owned(),
+                            "Decimal number cannot have multiple 'e' characters.".to_owned(),
                             *self.peek_position(0).unwrap(),
                         ));
                     } else {
@@ -1162,7 +1162,7 @@ impl Lexer<'_> {
                 }
                 _ => {
                     return Err(PreprocessError::MessageWithPosition(
-                        format!("Invalid char '{}' for decimal number.", current_char),
+                        format!("Invalid character '{}' for decimal number.", current_char),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
@@ -1172,7 +1172,7 @@ impl Lexer<'_> {
         // check syntax
         if number_buffer.ends_with('e') {
             return Err(PreprocessError::MessageWithRange(
-                "Decimal number can not ends with character \"e\".".to_owned(),
+                "A decimal number cannot end with character \"e\".".to_owned(),
                 Range::new(&self.pop_position_from_stack(), &self.last_position),
             ));
         }
@@ -1251,7 +1251,7 @@ impl Lexer<'_> {
         while let Some(current_char) = self.peek_char(0) {
             match current_char {
                 'f' | 'F' | 'd' | 'D' if found_p => {
-                    // 'f' is allowed only in the hex floating point literal mode,
+                    // 'f' is allowed only in the hex floating-point literal mode,
                     // and the character 'p' should be present, e.g. 0x1.2p3f)
                     let suffix = self.lex_floating_point_number_suffix()?;
                     is_decimal = suffix.0;
@@ -1269,12 +1269,12 @@ impl Lexer<'_> {
                 '.' => {
                     if found_point {
                         return Err(PreprocessError::MessageWithPosition(
-                            "Hexadecimal floating point number can not have multiple '.' characters.".to_owned(),
+                            "Hexadecimal floating-point number cannot have multiple '.' characters.".to_owned(),
                             *self.peek_position(0).unwrap(),
                         ));
                     } else if found_p {
                         return Err(PreprocessError::MessageWithPosition(
-                            "The exponent of a hexadecimal floating point number can not have a '.' character.".to_owned(),
+                            "The exponent of a hexadecimal floating-point number cannot have a '.' character.".to_owned(),
                             *self.peek_position(0).unwrap(),
                         ));
                     } else {
@@ -1292,14 +1292,14 @@ impl Lexer<'_> {
                     }
                 }
                 'p' | 'P' => {
-                    // hexadecimal floating point literal
+                    // hexadecimal floating-point literal
                     // see:
                     // - https://en.cppreference.com/w/cpp/language/floating_literal.html
                     // - https://www.gnu.org/software/c-intro-and-ref/manual/html_node/Floating-Constants.html
                     // - https://en.cppreference.com/w/c/language/floating_constant.html
                     if found_p {
                         return Err(PreprocessError::MessageWithPosition(
-                            "Hexadecimal floating point number can not have multiple 'p' characters.".to_owned(),
+                            "Hexadecimal floating-point number cannot have multiple 'p' characters.".to_owned(),
                             *self.peek_position(0).unwrap(),
                         ));
                     } else {
@@ -1362,7 +1362,7 @@ impl Lexer<'_> {
                 }
                 _ => {
                     return Err(PreprocessError::MessageWithPosition(
-                        format!("Invalid char '{}' for hexadecimal number.", current_char),
+                        format!("Invalid character '{}' for hexadecimal number.", current_char),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
@@ -1381,7 +1381,7 @@ impl Lexer<'_> {
         // missing exponent 'p'
         if found_point && !found_p {
             return Err(PreprocessError::MessageWithRange(
-                "Hexadecimal floating point number must have an exponent 'p'.".to_owned(),
+                "Hexadecimal floating-point number must have an exponent 'p'.".to_owned(),
                 Range::new(&self.pop_position_from_stack(), &self.last_position),
             ));
         }
@@ -1389,7 +1389,7 @@ impl Lexer<'_> {
         // empty exponent
         if number_buffer.ends_with('p') {
             return Err(PreprocessError::MessageWithRange(
-                "The exponent of a hexadecimal floating point number can not be empty.".to_owned(),
+                "The exponent of a hexadecimal floating-point number cannot be empty.".to_owned(),
                 Range::new(&self.pop_position_from_stack(), &self.last_position),
             ));
         }
@@ -1478,7 +1478,7 @@ impl Lexer<'_> {
                 }
                 _ => {
                     return Err(PreprocessError::MessageWithPosition(
-                        format!("Invalid char '{}' for binary number.", current_char),
+                        format!("Invalid character '{}' for binary number.", current_char),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
@@ -1561,7 +1561,7 @@ impl Lexer<'_> {
                 }
                 _ => {
                     return Err(PreprocessError::MessageWithPosition(
-                        format!("Invalid char '{}' for octal number.", current_char),
+                        format!("Invalid character '{}' for octal number.", current_char),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
@@ -1583,7 +1583,7 @@ impl Lexer<'_> {
     fn lex_integer_number_suffix(
         &mut self,
     ) -> Result<(/* is_unsigned */ bool, IntegerNumberWidth), PreprocessError> {
-        // integer number suffixes consist of the two groups:
+        // integer number suffixes consisting of the two groups:
         // - group 1: `u`, `U`
         // - group 2: `l`, `L`, `ll`, `LL`, `wb`, `WB`
         // Both groups are optional, and can be combined.
@@ -1630,13 +1630,13 @@ impl Lexer<'_> {
                 }
                 'd' | 'D' => {
                     return Err(PreprocessError::MessageWithPosition(
-                        "Integer number can not have \"dd\", \"df\", or \"dl\" suffix.".to_owned(),
+                        "Integer number cannot have \"dd\", \"df\", or \"dl\" suffix.".to_owned(),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
                 'f' | 'F' => {
                     return Err(PreprocessError::MessageWithPosition(
-                        "Integer number can not have 'f' or 'F' suffix.".to_owned(),
+                        "Integer number cannot have 'f' or 'F' suffix.".to_owned(),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
@@ -1705,19 +1705,19 @@ impl Lexer<'_> {
                 }
                 'u' | 'U' => {
                     return Err(PreprocessError::MessageWithPosition(
-                        "Floating-point number can not have 'u' or 'U' suffix.".to_owned(),
+                        "Floating-point number cannot have 'u' or 'U' suffix.".to_owned(),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
                 'l' if self.peek_char_and_equals(1, 'l') => {
                     return Err(PreprocessError::MessageWithPosition(
-                        "Floating-point number can not have 'll' or 'LL' suffix.".to_owned(),
+                        "Floating-point number cannot have 'll' or 'LL' suffix.".to_owned(),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
                 'L' if self.peek_char_and_equals(1, 'L') => {
                     return Err(PreprocessError::MessageWithPosition(
-                        "Floating-point number can not have 'll' or 'LL' suffix.".to_owned(),
+                        "Floating-point number cannot have 'll' or 'LL' suffix.".to_owned(),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
@@ -1727,7 +1727,7 @@ impl Lexer<'_> {
                 }
                 'w' | 'W' => {
                     return Err(PreprocessError::MessageWithPosition(
-                        "Floating-point number can not have \"wb\" or \"WB\" suffix.".to_owned(),
+                        "Floating-point number cannot have \"wb\" or \"WB\" suffix.".to_owned(),
                         *self.peek_position(0).unwrap(),
                     ));
                 }
@@ -1751,7 +1751,7 @@ impl Lexer<'_> {
         // |_____// current char, validated
         // ```
 
-        // save the start position of the char literal (i.e. the first "'")
+        // Save the start position of the char literal (i.e. the first "'")
         self.push_peek_position_into_stack();
 
         // consume the prefix characters, e.g. 'L', 'u', 'U', "u8"
@@ -1765,7 +1765,7 @@ impl Lexer<'_> {
             Some(current_char) => {
                 match current_char {
                     '\\' => {
-                        // save the start position of the escape sequence (i.e. the "\" char)
+                        // Save the start position of the escape sequence (i.e. the "\" char)
                         self.push_last_position_into_stack();
 
                         // escape chars.
@@ -2000,12 +2000,12 @@ impl Lexer<'_> {
                     '\'' => {
                         // Empty char (`''`).
                         return Err(PreprocessError::MessageWithRange(
-                            "Empty character is not allowed.".to_owned(),
+                            "Empty character literal is not allowed.".to_owned(),
                             Range::new(&self.pop_position_from_stack(), &self.last_position),
                         ));
                     }
                     _ => {
-                        // ordinary char
+                        // ordinary character
                         current_char
                     }
                 }
@@ -2018,7 +2018,7 @@ impl Lexer<'_> {
             }
         };
 
-        // consumes the closing single quote
+        // Consume the closing single quote
         match self.next_char() {
             Some('\'') => {
                 // Ok
@@ -2026,7 +2026,7 @@ impl Lexer<'_> {
             Some(_) => {
                 // missing closing single quote for char (`'a?`).
                 return Err(PreprocessError::MessageWithPosition(
-                    "Missing closing single quote for character literal.".to_owned(),
+                    "Missing the closing single quote in the character literal.".to_owned(),
                     self.last_position,
                 ));
             }
@@ -2073,7 +2073,7 @@ impl Lexer<'_> {
                 Some(current_char) => {
                     match current_char {
                         '\\' => {
-                            // save the start position of the escape sequence (i.e. the "\" char)
+                            // Save the start position of the escape sequence (i.e. the "\" char)
                             self.push_last_position_into_stack();
 
                             // escape chars.
@@ -2320,7 +2320,7 @@ impl Lexer<'_> {
                             break;
                         }
                         _ => {
-                            // ordinary char
+                            // ordinary character
                             string_buffer.push(current_char);
                         }
                     }
@@ -2349,7 +2349,7 @@ impl Lexer<'_> {
         // |________// current char, validated
         // ```
 
-        // save the start position of the file path (i.e. the first '"')
+        // Save the start position of the file path (i.e. the first '"')
         self.push_peek_position_into_stack();
 
         let mut file_path_buffer = String::new();
@@ -2396,7 +2396,7 @@ impl Lexer<'_> {
         // |________// current char, validated
         // ```
 
-        // save the start position of the file path (i.e. the first '<')
+        // Save the start position of the file path (i.e. the first '<')
         self.push_peek_position_into_stack();
 
         let mut file_path_buffer = String::new();
@@ -2487,7 +2487,7 @@ impl Lexer<'_> {
             )
     }
 
-    /// Checks whether the last token in the provided token list is a operator `__has_include` or `__has_embed`.
+    /// Checks whether the last token in the provided token list is an operator `__has_include` or `__has_embed`.
     fn in_inclusion_operator(&self, token_with_ranges: &[TokenWithRange]) -> bool {
         // To check for patterns like:
         // - `#... __has_include (`
@@ -2736,7 +2736,7 @@ mod tests {
             ]
         );
 
-        // Test location
+        // Location checks
 
         // Test punctuations `>>>=`,
         // it should be divided into  `>>` and `>=`.
@@ -2843,7 +2843,7 @@ mod tests {
             ]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("()").unwrap(),
@@ -2894,7 +2894,7 @@ mod tests {
             )))]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("223 211").unwrap(),
@@ -2918,7 +2918,7 @@ mod tests {
             ]
         );
 
-        // err: invalid char for decimal number
+        // Error: invalid char for decimal number
         assert!(matches!(
             lex_from_str_with_range_strip("1234x"),
             Err(PreprocessError::MessageWithPosition(
@@ -3060,7 +3060,7 @@ mod tests {
             ]
         );
 
-        // err: invalid suffix for integer number
+        // Error: invalid suffix for integer number
         assert!(matches!(
             lex_from_str_with_range_strip("13f"),
             Err(PreprocessError::MessageWithPosition(
@@ -3135,7 +3135,7 @@ mod tests {
         );
 
         // automatically complete the floating-point number
-        // by insert '0' before the point '.'
+        // by inserting '0' before the point '.'
         assert_eq!(
             lex_from_str_with_range_strip(".5").unwrap(),
             vec![Token::Number(Number::FloatingPoint(
@@ -3160,7 +3160,7 @@ mod tests {
             ))]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("3.14 6.022e23").unwrap(),
@@ -3184,7 +3184,7 @@ mod tests {
             ]
         );
 
-        // err: incomplete floating point number since it ends with 'e' (empty exponent)
+        // Error: incomplete floating-point number since it ends with 'e' (empty exponent)
         assert!(matches!(
             lex_from_str_with_range_strip("123e"),
             Err(PreprocessError::MessageWithRange(
@@ -3204,7 +3204,7 @@ mod tests {
             ))
         ));
 
-        // err: multiple '.' (point)
+        // Error: multiple '.' (point)
         assert!(matches!(
             lex_from_str_with_range_strip("1.23.456"),
             Err(PreprocessError::MessageWithPosition(
@@ -3217,7 +3217,7 @@ mod tests {
             ))
         ));
 
-        // err: multiple 'e' (exponent)
+        // Error: multiple 'e' (exponent)
         assert!(matches!(
             lex_from_str_with_range_strip("1e23e456"),
             Err(PreprocessError::MessageWithPosition(
@@ -3230,8 +3230,8 @@ mod tests {
             ))
         ));
 
-        // err: invalid char for floating-point decimal number
-        // err: multiple 'e' (exponent)
+        // Error: invalid char for floating-point decimal number
+        // Error: multiple 'e' (exponent)
         assert!(matches!(
             lex_from_str_with_range_strip("2.718x"),
             Err(PreprocessError::MessageWithPosition(
@@ -3309,7 +3309,7 @@ mod tests {
             ]
         );
 
-        // err: invalid suffix for floating-point number
+        // Error: invalid suffix for floating-point number
         assert!(matches!(
             lex_from_str_with_range_strip("1.23ll"),
             Err(PreprocessError::MessageWithPosition(
@@ -3343,7 +3343,7 @@ mod tests {
             )))]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("0b0110 0b1000").unwrap(),
@@ -3367,7 +3367,7 @@ mod tests {
             ]
         );
 
-        // err: does not support binary floating point
+        // Error: does not support binary floating-point
         assert!(matches!(
             lex_from_str_with_range_strip("0b10.10"),
             Err(PreprocessError::MessageWithPosition(
@@ -3380,7 +3380,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid digit for binary number
+        // Error: invalid digit for binary number
         assert!(matches!(
             lex_from_str_with_range_strip("0b123"),
             Err(PreprocessError::MessageWithPosition(
@@ -3393,7 +3393,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid char for binary number
+        // Error: invalid char for binary number
         assert!(matches!(
             lex_from_str_with_range_strip("0b1x"),
             Err(PreprocessError::MessageWithPosition(
@@ -3406,7 +3406,7 @@ mod tests {
             ))
         ));
 
-        // err: empty binary number
+        // Error: empty binary number
         assert!(matches!(
             lex_from_str_with_range_strip("0b"),
             Err(PreprocessError::MessageWithRange(
@@ -3518,7 +3518,7 @@ mod tests {
             ]
         );
 
-        // err: invalid suffix for integer number
+        // Error: invalid suffix for integer number
         assert!(matches!(
             lex_from_str_with_range_strip("0b01f"),
             Err(PreprocessError::MessageWithPosition(
@@ -3561,7 +3561,7 @@ mod tests {
             )))]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("01 0600").unwrap(),
@@ -3585,7 +3585,7 @@ mod tests {
             ]
         );
 
-        // err: does not support octal floating point
+        // Error: does not support octal floating-point
         assert!(matches!(
             lex_from_str_with_range_strip("0100.10"),
             Err(PreprocessError::MessageWithPosition(
@@ -3598,7 +3598,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid digit for octal number
+        // Error: invalid digit for octal number
         assert!(matches!(
             lex_from_str_with_range_strip("0778"),
             Err(PreprocessError::MessageWithPosition(
@@ -3611,7 +3611,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid char for octal number
+        // Error: invalid char for octal number
         assert!(matches!(
             lex_from_str_with_range_strip("077x"),
             Err(PreprocessError::MessageWithPosition(
@@ -3715,7 +3715,7 @@ mod tests {
             ]
         );
 
-        // err: invalid suffix for integer number
+        // Error: invalid suffix for integer number
         assert!(matches!(
             lex_from_str_with_range_strip("01f"),
             Err(PreprocessError::MessageWithPosition(
@@ -3749,7 +3749,7 @@ mod tests {
             )))]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("0x90ab 0xcd12").unwrap(),
@@ -3773,7 +3773,7 @@ mod tests {
             ]
         );
 
-        // err: invalid char for hex number
+        // Error: invalid char for hex number
         assert!(matches!(
             lex_from_str_with_range_strip("0x1234x"),
             Err(PreprocessError::MessageWithPosition(
@@ -3786,7 +3786,7 @@ mod tests {
             ))
         ));
 
-        // err: empty hex number
+        // Error: empty hex number
         assert!(matches!(
             lex_from_str_with_range_strip("0x"),
             Err(PreprocessError::MessageWithRange(
@@ -3956,7 +3956,7 @@ mod tests {
         );
 
         // automatically complete the hexadecimal floating-point number
-        // by insert '0' before the point '.'
+        // by inserting '0' before the point '.'
         assert_eq!(
             lex_from_str_with_range_strip("0x.1234p5").unwrap(),
             vec![Token::Number(Number::FloatingPoint(
@@ -4005,7 +4005,7 @@ mod tests {
             ]
         );
 
-        // err: missing the exponent
+        // Error: missing the exponent
         assert!(matches!(
             lex_from_str_with_range_strip("0x1.23"),
             Err(PreprocessError::MessageWithRange(
@@ -4025,7 +4025,7 @@ mod tests {
             ))
         ));
 
-        // err: empty the exponent
+        // Error: empty the exponent
         assert!(matches!(
             lex_from_str_with_range_strip("0x1.23p"),
             Err(PreprocessError::MessageWithRange(
@@ -4045,7 +4045,7 @@ mod tests {
             ))
         ));
 
-        // err: multiple '.' (point)
+        // Error: multiple '.' (point)
         assert!(matches!(
             lex_from_str_with_range_strip("0x1.2.3"),
             Err(PreprocessError::MessageWithPosition(
@@ -4058,7 +4058,7 @@ mod tests {
             ))
         ));
 
-        // err: multiple 'p' (exponent)
+        // Error: multiple 'p' (exponent)
         assert!(matches!(
             lex_from_str_with_range_strip("0x1.2p3p4"),
             Err(PreprocessError::MessageWithPosition(
@@ -4071,7 +4071,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid exponent (dot '.' after 'p')
+        // Error: invalid exponent (dot '.' after 'p')
         assert!(matches!(
             lex_from_str_with_range_strip("0x1.23p4.5"),
             Err(PreprocessError::MessageWithPosition(
@@ -4152,7 +4152,7 @@ mod tests {
             ]
         );
 
-        // err: invalid suffix for floating-point number
+        // Error: invalid suffix for floating-point number
         assert!(matches!(
             lex_from_str_with_range_strip("0x1.23ll"),
             Err(PreprocessError::MessageWithPosition(
@@ -4280,7 +4280,7 @@ mod tests {
             vec![Token::new_char('A')]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("'a' '文'").unwrap(),
@@ -4306,7 +4306,7 @@ mod tests {
             )]
         );
 
-        // err: empty char
+        // Error: empty char
         assert!(matches!(
             lex_from_str_with_range_strip("''"),
             Err(PreprocessError::MessageWithRange(
@@ -4326,19 +4326,19 @@ mod tests {
             ))
         ));
 
-        // err: incomplete char, missing the content, encounter EOF
+        // Error: incomplete char, missing the content, reached EOF
         assert!(matches!(
             lex_from_str_with_range_strip("'"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incomplete char, missing the closing single quote, encounter EOF
+        // Error: incomplete char, missing the closing single quote, reached EOF
         assert!(matches!(
             lex_from_str_with_range_strip("'a"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: invalid char, expect the right quote, encounter another char
+        // Error: invalid char, expect the right quote, encounter another char
         assert!(matches!(
             lex_from_str_with_range_strip("'ab"),
             Err(PreprocessError::MessageWithPosition(
@@ -4351,7 +4351,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid char, expect the right quote, encounter char 'b'
+        // Error: invalid char, expect the right quote, encounter char 'b'
         assert!(matches!(
             lex_from_str_with_range_strip("'ab'"),
             Err(PreprocessError::MessageWithPosition(
@@ -4364,7 +4364,7 @@ mod tests {
             ))
         ));
 
-        // err: incorrect hex escape `'\x3'`
+        // Error: incorrect hex escape `'\x3'`
         assert!(matches!(
             lex_from_str_with_range_strip(r#"'\x3'"#),
             Err(PreprocessError::MessageWithRange(
@@ -4384,7 +4384,7 @@ mod tests {
             ))
         ));
 
-        // err: empty unicode escape string
+        // Error: empty unicode escape string
         // '\\u'
         // 01 23    // index
         assert!(matches!(
@@ -4406,7 +4406,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid unicode escape string, the number of digits should be 4 or 8.
+        // Error: invalid unicode escape string, the number of digits should be 4 or 8.
         assert!(matches!(
             lex_from_str_with_range_strip("'\\u123"),
             Err(PreprocessError::MessageWithRange(
@@ -4426,7 +4426,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid unicode escape string, the number of digits should be 4 or 8.
+        // Error: invalid unicode escape string, the number of digits should be 4 or 8.
         // '\\U1000111'
         // 01 234567890    // index
         assert!(matches!(
@@ -4448,7 +4448,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid unicode code point, code point out of range
+        // Error: invalid unicode code point, code point out of range
         // '\\U00123456'
         // 01 2345678901    // index
         assert!(matches!(
@@ -4470,7 +4470,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid char in the unicode escape sequence
+        // Error: invalid char in the unicode escape sequence
         assert!(matches!(
             lex_from_str_with_range_strip("'\\u12mn''"),
             Err(PreprocessError::MessageWithRange(
@@ -4556,7 +4556,7 @@ mod tests {
             vec![Token::new_string("abc\0xyz")]
         );
 
-        // Test location
+        // Location checks
 
         // "abc" 'n' "文字😊"
         // 012345678901 2 34    // index
@@ -4573,31 +4573,31 @@ mod tests {
             ]
         );
 
-        // err: incomplete string, missing the content, encounter EOF
+        // Error: incomplete string, missing the content, reached EOF
         assert!(matches!(
             lex_from_str_with_range_strip("\""),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incomplete string, missing the closing double quote, encounter EOF
+        // Error: incomplete string, missing the closing double quote, reached EOF
         assert!(matches!(
             lex_from_str_with_range_strip("\"abc"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incomplete string, missing the closing double quote, ends with '\n' and encounter EOF
+        // Error: incomplete string, missing the closing double quote, ends with '\n' and reached EOF
         assert!(matches!(
             lex_from_str_with_range_strip("\"abc\n"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incomplete string, missing the closing double quote, ends with whitespaces and encounter EOF
+        // Error: incomplete string, missing the closing double quote, ends with whitespace and reached EOF
         assert!(matches!(
             lex_from_str_with_range_strip("\"abc\n   "),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incorrect hex escape `'\x3'`
+        // Error: incorrect hex escape `'\x3'`
         assert!(matches!(
             lex_from_str_with_range_strip(r#""abc\x3xyz""#),
             Err(PreprocessError::MessageWithRange(
@@ -4617,7 +4617,7 @@ mod tests {
             ))
         ));
 
-        // err: empty unicode escape string
+        // Error: empty unicode escape string
         //
         // "abc\\u"
         // 01234 56     // index
@@ -4640,7 +4640,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid unicode escape string, the number of digits should be 4 or 8.
+        // Error: invalid unicode escape string, the number of digits should be 4 or 8.
         assert!(matches!(
             lex_from_str_with_range_strip(r#""abc\u123""#),
             Err(PreprocessError::MessageWithRange(
@@ -4660,7 +4660,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid unicode escape string, the number of digits should be 4 or 8.
+        // Error: invalid unicode escape string, the number of digits should be 4 or 8.
         //
         // "abc\\U1000111xyz"
         // 01234 567890234567       // index
@@ -4683,7 +4683,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid unicode code point, code point out of range
+        // Error: invalid unicode code point, code point out of range
         //
         // "abc\\U00123456xyz"
         // 01234 5678901234567      // index
@@ -4706,7 +4706,7 @@ mod tests {
             ))
         ));
 
-        // err: invalid char in the unicode escape sequence
+        // Error: invalid char in the unicode escape sequence
         assert!(matches!(
             lex_from_str_with_range_strip(r#""abc\u12mnxyz""#),
             Err(PreprocessError::MessageWithRange(
@@ -4726,7 +4726,7 @@ mod tests {
             ))
         ));
 
-        // err: incomplete string, missing the closing double quote, ends with unicode escape sequence and encounter EOF
+        // Error: incomplete string, missing the closing double quote, ends with unicode escape sequence and reached EOF
         assert!(matches!(
             lex_from_str_with_range_strip(r#""abc\u1234"#),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
@@ -4780,7 +4780,7 @@ mod tests {
             ]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("hello ANCC").unwrap(),
@@ -4796,7 +4796,7 @@ mod tests {
             ]
         );
 
-        // err: invalid identifier
+        // Error: invalid identifier
         assert!(matches!(
             lex_from_str_with_range_strip("1abc"),
             Err(PreprocessError::MessageWithPosition(
@@ -5075,7 +5075,7 @@ xyz
             ]
         );
 
-        // Test location
+        // Location checks
         assert_eq!(
             lex_from_str("#include <path/to/header.h>").unwrap(),
             vec![
@@ -5091,7 +5091,7 @@ xyz
             ]
         );
 
-        // err: invalid character `\n` in file path
+        // Error: invalid character `\n` in file path
         assert!(matches!(
             lex_from_str_with_range_strip("#include <foo\nbar>"),
             Err(PreprocessError::MessageWithPosition(
@@ -5104,7 +5104,7 @@ xyz
             ))
         ));
 
-        // err: invalid character `\n` in file path
+        // Error: invalid character `\n` in file path
         assert!(matches!(
             lex_from_str_with_range_strip("#include \"foo\nbar\""),
             Err(PreprocessError::MessageWithPosition(
@@ -5117,13 +5117,13 @@ xyz
             ))
         ));
 
-        // err: incomplete file path, missing the closing '>'
+        // Error: incomplete file path, missing the closing '>'
         assert!(matches!(
             lex_from_str_with_range_strip("#include <foo.h"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incomplete file path, missing the closing '"'
+        // Error: incomplete file path, missing the closing '"'
         assert!(matches!(
             lex_from_str_with_range_strip("#include \"foo.h"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
@@ -5239,7 +5239,7 @@ xyz
             vec![Token::new_integer_number(7), Token::new_integer_number(23),]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("abc // def\n// uvw\nxyz").unwrap(),
@@ -5317,7 +5317,7 @@ xyz
             vec![Token::new_integer_number(7), Token::new_integer_number(19),]
         );
 
-        // Test location
+        // Location checks
 
         assert_eq!(
             lex_from_str("foo /* hello */ bar").unwrap(),
@@ -5330,25 +5330,25 @@ xyz
             ]
         );
 
-        // err: incomplete, missing `*/`
+        // Error: incomplete, missing `*/`
         assert!(matches!(
             lex_from_str_with_range_strip("7 /* 11"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incomplete, missing `*/`, ends with newline
+        // Error: incomplete, missing `*/`, ends with newline
         assert!(matches!(
             lex_from_str_with_range_strip("7 /* 11\n"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incomplete, missing `*/`
+        // Error: incomplete, missing `*/`
         assert!(matches!(
             lex_from_str_with_range_strip("a /* b */ c /* d"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))
         ));
 
-        // err: incomplete, missing `*/`, ends with newline
+        // Error: incomplete, missing `*/`, ends with newline
         assert!(matches!(
             lex_from_str_with_range_strip("a /* b */ c /* d\n"),
             Err(PreprocessError::UnexpectedEndOfDocument(_))

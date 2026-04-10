@@ -31,7 +31,7 @@ use crate::{
     },
 };
 
-/// Extra operators supported in the conditional directives.
+/// Extra operators supported in conditional directives.
 ///
 /// They can be used in the expressions of `#if` and `#elif` directives.
 /// `#if __has_include("header.h")`
@@ -279,7 +279,7 @@ where
                         file_number: self.context.current_file_item.number,
                         error: PreprocessError::MessageWithRange(
                             format!(
-                                "The identifier '{}' is reversed and cannot be used as a macro name.",
+                                "The identifier '{}' is reserved and cannot be used as a macro name.",
                                 name
                             ),
                             *range,
@@ -297,7 +297,7 @@ where
                     return Err(PreprocessFileError {
                         file_number: self.context.current_file_item.number,
                         error: PreprocessError::MessageWithRange(
-                            format!("Macro '{}' is already exist.", name),
+                            format!("Macro '{}' already exists.", name),
                             *range,
                         ),
                     });
@@ -323,7 +323,7 @@ where
                         file_number: self.context.current_file_item.number,
                         error: PreprocessError::MessageWithRange(
                             format!(
-                                "The identifier '{}' is reversed and cannot be used as a macro name.",
+                                "The identifier '{}' is reserved and cannot be used as a macro name.",
                                 name
                             ),
                             *range,
@@ -399,7 +399,7 @@ where
             return Err(PreprocessFileError::new(
                 self.context.current_file_item.number,
                 PreprocessError::MessageWithRange(
-                    "#include directive requires a file path.".to_owned(),
+                    "The `#include` directive requires a file path.".to_owned(),
                     *directive_range,
                 ),
             ));
@@ -573,7 +573,7 @@ where
             return Err(PreprocessFileError::new(
                 self.context.current_file_item.number,
                 PreprocessError::MessageWithRange(
-                    "#embed directive requires a file path.".to_owned(),
+                    "The `#embed` directive requires a file path.".to_owned(),
                     *directive_range,
                 ),
             ));
@@ -792,7 +792,7 @@ where
         Err(PreprocessFileError {
             file_number: self.context.current_file_item.number,
             error: PreprocessError::MessageWithRange(
-                format!("User defined error: {}", message),
+                format!("User-defined error: {}", message),
                 range,
             ),
         })
@@ -1642,7 +1642,7 @@ where
                             let identifier = match code_parser.peek_token(0) {
                                 Some(Token::Identifier(id)) => {
                                     let id_owned = id.to_owned();
-                                    code_parser.next_token(); // consumes the identifier token
+                                    code_parser.next_token(); // Consume the identifier token
 
                                     id_owned
                                 }
@@ -1809,7 +1809,7 @@ where
                                                     ),
                                                 );
 
-                                                code_parser.next_token(); // consumes the token
+                                                code_parser.next_token(); // Consume the token
                                             }
 
                                             argument_token_with_locationss
@@ -2117,7 +2117,7 @@ where
                                                 .location
                                                 .file_number,
                                             error: PreprocessError::MessageWithRange(
-                                                "Unclosed parenthesis in `__has_include`."
+                                                "Unterminated parenthesis in `__has_include`."
                                                     .to_owned(),
                                                 current_token_with_location.location.range,
                                             ),
@@ -2130,7 +2130,7 @@ where
                                 return Err(PreprocessFileError {
                                     file_number: current_token_with_location.location.file_number,
                                     error: PreprocessError::MessageWithRange(
-                                        "`__has_include` requires a file path argument.".to_owned(),
+                                        "The `__has_include` operator requires a file path argument.".to_owned(),
                                         current_token_with_location.location.range,
                                     ),
                                 });
@@ -2243,7 +2243,7 @@ where
                                                 .location
                                                 .file_number,
                                             error: PreprocessError::MessageWithRange(
-                                                "Unclosed parenthesis in `__has_include`."
+                                                "Unterminated parenthesis in `__has_embed`."
                                                     .to_owned(),
                                                 current_token_with_location.location.range,
                                             ),
@@ -2256,7 +2256,7 @@ where
                                 return Err(PreprocessFileError {
                                     file_number: current_token_with_location.location.file_number,
                                     error: PreprocessError::MessageWithRange(
-                                        "`__has_embed` requires a file path argument.".to_owned(),
+                                        "The `__has_embed` operator requires a file path argument.".to_owned(),
                                         current_token_with_location.location.range,
                                     ),
                                 });
@@ -2491,7 +2491,7 @@ where
                                 return Err(PreprocessFileError {
                                     file_number: current_token_with_location.location.file_number,
                                     error: PreprocessError::MessageWithRange(
-                                        "Unclosed angle bracket in include file path.".to_owned(),
+                                        "Unterminated angle-bracket include file path.".to_owned(),
                                         current_token_with_location.location.range,
                                     ),
                                 });
@@ -2594,7 +2594,7 @@ where
                             PreprocessFileError::new(
                                 current_token_with_location.location.file_number,
                                 PreprocessError::MessageWithRange(
-                                    "Expect a integer number or character literal in data list of `embed` directive.".to_owned(),
+                                    "Expected an integer literal or character literal in the `#embed` data list.".to_owned(),
                                     current_token_with_location.location.range,
                                 ),
                             )
@@ -2617,7 +2617,7 @@ where
                         return Err(PreprocessFileError::new(
                             current_token_with_location.location.file_number,
                             PreprocessError::MessageWithRange(
-                                "Expect an integer number or character literal in data list of `embed` directive."
+                                "Expected an integer literal or character literal in the `#embed` data list."
                                     .to_owned(),
                                 current_token_with_location.location.range,
                             ),
@@ -2639,7 +2639,7 @@ where
                         PreprocessFileError::new(
                             current_token_with_location.location.file_number,
                             PreprocessError::MessageWithPosition(
-                                "Expect a character literal or integer number after comma in data list of `embed` directive."
+                                "Expected a character literal or integer literal after a comma in the `#embed` data list."
                                     .to_owned(),
                                 current_token_with_location.location.range.start
                             ),
@@ -2700,7 +2700,7 @@ where
                                 return Err(PreprocessFileError {
                                     file_number: current_token_with_location.location.file_number,
                                     error: PreprocessError::MessageWithRange(
-                                        "Unclosed angle bracket in file path.".to_owned(),
+                                        "Unterminated angle-bracket file path.".to_owned(),
                                         current_token_with_location.location.range,
                                     ),
                                 });
@@ -2727,7 +2727,7 @@ where
                                         PreprocessFileError::new(
                                             location.file_number,
                                             PreprocessError::MessageWithRange(
-                                                "Invalid integer number.".to_owned(),
+                                                "Invalid integer literal.".to_owned(),
                                                 location.range,
                                             ),
                                         )
@@ -2739,7 +2739,7 @@ where
                                     return Err(PreprocessFileError::new(
                                         location.file_number,
                                         PreprocessError::MessageWithRange(
-                                            "The value of embed parameter `limit` must be an integer."
+                                            "The value of embed parameter `limit` must be an integer literal."
                                                 .to_owned(),
                                             location.range,
                                         ),
@@ -2749,7 +2749,7 @@ where
                                     return Err(PreprocessFileError::new(
                                         current_token_with_location.location.file_number,
                                         PreprocessError::MessageWithRange(
-                                            "Expect an integer number or character literal in `limit` parameter."
+                                            "Expected an integer literal in the `limit` parameter."
                                                 .to_owned(),
                                             current_token_with_location.location.range,
                                         ),
@@ -3140,7 +3140,7 @@ struct EmbedResolveResult {
     is_system_file: bool,
 
     // Specifies the maximum number of bytes to output from the resource.
-    // This limit does not include the prefix or suffix, and does not limit the numbers of bytes of `if_empty`.
+    // This limit does not include the prefix or suffix, and does not limit the number of bytes of `if_empty`.
     limit: Option<usize>,
 
     // Sequence to append to the output if the resource is not empty.
@@ -3233,7 +3233,7 @@ impl<'a> CodeParser<'a> {
                     Err(PreprocessFileError::new(
                         self.last_location.file_number,
                         PreprocessError::MessageWithPosition(
-                            format!("Expect token: {}.", token_description),
+                            format!("Expected token: {}.", token_description),
                             self.last_location.range.start,
                         ),
                     ))
@@ -3242,7 +3242,7 @@ impl<'a> CodeParser<'a> {
             None => Err(PreprocessFileError::new(
                 self.last_location.file_number,
                 PreprocessError::MessageWithPosition(
-                    format!("Expect token \"{}\" following here.", token_description),
+                    format!("Expected token \"{}\" after this position.", token_description),
                     self.last_location.range.end_inclusive,
                 ),
             )),
@@ -3650,7 +3650,7 @@ FOO 11 BAR",
             "\"巴拉巴拉呣呣\" 11 \"巴拉巴拉呣呣\""
         );
 
-        // err: Redefine without undefine
+        // Error: Redefine without undefine
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3678,7 +3678,7 @@ FOO 11 BAR",
             })
         ));
 
-        // err: Redefine with same definition
+        // Error: Redefine with same definition
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3706,7 +3706,7 @@ FOO 11 BAR",
             })
         ));
 
-        // err: Define reserved identifier: 'defined'
+        // Error: Define reserved identifier: 'defined'
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3733,7 +3733,7 @@ FOO 11 BAR",
             })
         ));
 
-        // err: Define reserved identifier: the C keyword `return`
+        // Error: Define reserved identifier: the C keyword `return`
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3763,7 +3763,7 @@ A",
         );
         assert_eq!(print_tokens(&tokens), "456");
 
-        // err: undefine non-existing macro
+        // Error: undefine non-existing macro
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3841,7 +3841,7 @@ FOO(a) BAR(b) BUZZ(c)"#,
         );
         assert_eq!(print_tokens(&tokens), "FOO ( a ) BAR ( b ) BUZZ ( c )");
 
-        // err: redefine function-like macro
+        // Error: redefine function-like macro
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3869,7 +3869,7 @@ FOO(a) BAR(b) BUZZ(c)"#,
             })
         ));
 
-        // err: not enough arguments for function-like macro
+        // Error: not enough arguments for function-like macro
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3897,7 +3897,7 @@ FOO(1)",
             })
         ));
 
-        // err: too many arguments for function-like macro
+        // Error: too many arguments for function-like macro
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3925,7 +3925,7 @@ FOO(1, 2, 3)",
             })
         ));
 
-        // err: Missing closing parenthesis
+        // Error: Missing closing parenthesis
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3953,7 +3953,7 @@ FOO(abc",
             })
         ));
 
-        // err: multiple tokens as argument
+        // Error: multiple tokens as argument
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -3981,7 +3981,7 @@ FOO(a b c)",
             })
         ));
 
-        // err: define reserved identifier: 'defined'
+        // Error: define reserved identifier: 'defined'
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4091,7 +4091,7 @@ BUZZ(last,11,13);",
             "; 1 , 2 , 3 ; a b ; c d e , f ; int first [ ] ; int last [ ] = { 11 , 13 } ;"
         );
 
-        // err: not enough arguments for variadic macro
+        // Error: not enough arguments for variadic macro
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4155,7 +4155,7 @@ STR(a b, c d);"#,
 
         assert_eq!(print_tokens(&tokens), r#""a, b, c, d" ; "a b, c d" ;"#);
 
-        // err: stringizing on non-function-like macro
+        // Error: stringizing on non-function-like macro
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4183,7 +4183,7 @@ STR",
             })
         ));
 
-        // err: stringizing on non-parameter
+        // Error: stringizing on non-parameter
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4237,7 +4237,7 @@ CONCAT(ABC, 42)
             "foo1 sprite2bar ABC3 helloworld ABC42"
         );
 
-        // err: invalid identifier after concatenation
+        // Error: invalid identifier after concatenation
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4265,7 +4265,7 @@ CONCAT()",
             })
         ));
 
-        // err: invalid identifier, through parameter concatenation
+        // Error: invalid identifier, through parameter concatenation
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4293,7 +4293,7 @@ CONCAT(9, s)",
             })
         ));
 
-        // err: invalid identifier: concatenate an identifier and a string
+        // Error: invalid identifier: concatenate an identifier and a string
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4321,7 +4321,7 @@ CONCAT(hello, \"world\")",
             })
         ));
 
-        // err: concatenate a multiple tokens argument
+        // Error: concatenate a multiple tokens argument
         assert!(matches!(
             process_multiple_tokens_argument(
                 "\
@@ -4349,7 +4349,7 @@ CONCAT(hello world, 2)",
             })
         ));
 
-        // err: `##` is followed by `__VA_ARGS__`
+        // Error: `##` is followed by `__VA_ARGS__`
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4377,7 +4377,7 @@ CONCAT(hello, world)",
             })
         ));
 
-        // err: `##` is followed by `__VA_OPT__`
+        // Error: `##` is followed by `__VA_OPT__`
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4405,7 +4405,7 @@ CONCAT(hello, world)",
             })
         ));
 
-        // err: `##` is preceded by nothing
+        // Error: `##` is preceded by nothing
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4433,7 +4433,7 @@ CONCAT(hello, world)",
             })
         ));
 
-        // err: `##` is followed by nothing
+        // Error: `##` is followed by nothing
         assert!(matches!(
             process_single_source_file(
                 "\
@@ -4892,7 +4892,7 @@ FOO
 
         assert_eq!(print_tokens(&tokens), "42");
 
-        // err: include non-existing file
+        // Error: include non-existing file
         assert!(matches!(
             process_multiple_source_files(
                 r#"
@@ -4922,7 +4922,7 @@ FOO
             })
         ));
 
-        // err: include with identifier which expands to non-existing file
+        // Error: include with identifier which expands to non-existing file
         assert!(matches!(
             process_multiple_source_files(
                 r#"
@@ -4953,7 +4953,7 @@ FOO
             })
         ));
 
-        // err: include with identifier which expands to empty
+        // Error: include with identifier which expands to empty
         assert!(matches!(
             process_multiple_source_files(
                 r#"
@@ -4984,7 +4984,7 @@ FOO
             })
         ));
 
-        // err: include with a number literal
+        // Error: include with a number literal
         assert!(matches!(
             process_multiple_source_files(
                 r#"#include 123"#,
@@ -5005,7 +5005,7 @@ FOO
         let a = process_multiple_source_files(r#"#include "foo.h" bar"#, &[], &[], &[]);
         println!("{:?}", a);
 
-        // err: include with identifier which extraneous tokens
+        // Error: include with an identifier that has extraneous trailing tokens.
         assert!(matches!(
             process_multiple_source_files(r#"#include "foo.h" bar"#, &[], &[], &[],),
             Err(PreprocessFileError {
@@ -5139,7 +5139,7 @@ FOO
             "0x01 , 0x02 , 0x03"
         );
 
-        // err: include non-existing file
+        // Error: include non-existing file
         assert!(matches!(
             process_multiple_source_files(r#"#embed "non_existing.bin""#, &[], &[], &[],),
             Err(PreprocessFileError {
@@ -5162,13 +5162,13 @@ FOO
             })
         ));
 
-        // err: invalid parameter value
+        // Error: invalid parameter value
         assert!(matches!(
             process_multiple_source_files(r#"#embed "foo.bin" limit(abc)"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
-                    _, // "The value of embed parameter `limit` must be an integer."
+                    _, // "The value of embed parameter `limit` must be an integer literal."
                     Range {
                         start: Position {
                             index: 23,
@@ -5185,7 +5185,7 @@ FOO
             },)
         ));
 
-        // err: missing opening parenthesis in parameter value
+        // Error: missing opening parenthesis in parameter value
         assert!(matches!(
             process_multiple_source_files(r#"#embed "foo.bin" limit 100"#, &[], &[], &[],),
             Err(PreprocessFileError {
@@ -5201,7 +5201,7 @@ FOO
             },)
         ));
 
-        // err: missing closing parenthesis in parameter value
+        // Error: missing closing parenthesis in parameter value
         assert!(matches!(
             process_multiple_source_files(r#"#embed "foo.bin" limit(100"#, &[], &[], &[],),
             Err(PreprocessFileError {
@@ -5217,13 +5217,13 @@ FOO
             },)
         ));
 
-        // err: unsupported data type in data list
+        // Error: unsupported data type in data list
         assert!(matches!(
             process_multiple_source_files(r#"#embed "foo.bin" prefix(11, 'a', c)"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
-                    _, // "Expect an integer number or character literal in data list of `embed` directive."
+                    _, // "Expected an integer literal or character literal in the `#embed` data list."
                     Range {
                         start: Position {
                             index: 33,
@@ -5240,7 +5240,7 @@ FOO
             },)
         ));
 
-        // err: number value exceeds byte range
+        // Error: number value exceeds byte range
         assert!(matches!(
             process_multiple_source_files(r#"#embed "foo.bin" prefix(42, 256)"#, &[], &[], &[],),
             Err(PreprocessFileError {
@@ -5263,7 +5263,7 @@ FOO
             },)
         ));
 
-        // err: char value exceeds byte range
+        // Error: char value exceeds byte range
         assert!(matches!(
             process_multiple_source_files(r#"#embed "foo.bin" prefix('光', 'a')"#, &[], &[], &[],),
             Err(PreprocessFileError {
@@ -5286,7 +5286,7 @@ FOO
             },)
         ));
 
-        // err: missing commas in the data list
+        // Error: missing commas in the data list
         assert!(matches!(
             process_multiple_source_files(r#"#embed "foo.bin" prefix(11 13)"#, &[], &[], &[],),
             Err(PreprocessFileError {
@@ -5302,7 +5302,7 @@ FOO
             },)
         ));
 
-        // err: unsupported parameter name
+        // Error: unsupported parameter name
         assert!(matches!(
             process_multiple_source_files(r#"#embed "foo.bin" offset(10)"#, &[], &[], &[],),
             Err(PreprocessFileError {
@@ -5804,7 +5804,7 @@ FOO(
             r#""Hello, World!""#
         );
 
-        // err: concatenates string literals with different encoding types.
+        // Error: concatenates string literals with different encoding types.
         assert!(matches!(
             process_single_source_file(r#""abc" u8"xyz""#, &predefinitions),
             Err(
