@@ -179,14 +179,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn consume_opening_paren(&mut self) -> Result<(), PreprocessError> {
+    fn consume_opening_parenthesis(&mut self) -> Result<(), PreprocessError> {
         self.consume_token_and_assert(
             &Token::Punctuator(Punctuator::ParenthesisOpen),
             "opening parenthesis",
         )
     }
 
-    fn consume_closing_paren(&mut self) -> Result<(), PreprocessError> {
+    fn consume_closing_parenthesis(&mut self) -> Result<(), PreprocessError> {
         self.consume_token_and_assert(
             &Token::Punctuator(Punctuator::ParenthesisClose),
             "closing parenthesis",
@@ -365,7 +365,7 @@ impl Parser<'_> {
         let parse_parameters = |parser: &mut Parser| -> Result<Vec<String>, PreprocessError> {
             let mut parameters = vec![];
 
-            parser.consume_opening_paren()?; // consumes '('
+            parser.consume_opening_parenthesis()?; // consumes '('
 
             while let Some(token) = parser.peek_token(0) {
                 match token {
@@ -405,7 +405,7 @@ impl Parser<'_> {
                 }
             }
 
-            parser.consume_closing_paren()?; // consumes ')'
+            parser.consume_closing_parenthesis()?; // consumes ')'
 
             Ok(parameters)
         };
@@ -1337,7 +1337,7 @@ mod tests {
                         line: 1,
                         column: 1
                     },
-                    end_included: Position {
+                    end_inclusive: Position {
                         index: 7,
                         line: 1,
                         column: 5
@@ -1357,7 +1357,7 @@ mod tests {
                         line: 1,
                         column: 1
                     },
-                    end_included: Position {
+                    end_inclusive: Position {
                         index: 6,
                         line: 1,
                         column: 4

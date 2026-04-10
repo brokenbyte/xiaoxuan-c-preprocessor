@@ -787,7 +787,7 @@ where
         directive_range: &Range,
         message_range: &Range,
     ) -> Result<(), PreprocessFileError> {
-        let range = Range::new(&directive_range.start, &message_range.end_included);
+        let range = Range::new(&directive_range.start, &message_range.end_inclusive);
 
         Err(PreprocessFileError {
             file_number: self.context.current_file_item.number,
@@ -1114,7 +1114,7 @@ where
                         components.first().unwrap().location.file_number,
                         &Range::new(
                             &components.first().unwrap().location.range.start,
-                            &components.last().unwrap().location.range.end_included,
+                            &components.last().unwrap().location.range.end_inclusive,
                         ),
                     );
 
@@ -3243,7 +3243,7 @@ impl<'a> CodeParser<'a> {
                 self.last_location.file_number,
                 PreprocessError::MessageWithPosition(
                     format!("Expect token \"{}\" following here.", token_description),
-                    self.last_location.range.end_included,
+                    self.last_location.range.end_inclusive,
                 ),
             )),
         }
@@ -3307,7 +3307,7 @@ fn concatenate_adjacent_strings(
 
                     // Merge the next string literal.
                     merged_string.push(next_string.to_owned());
-                    merged_location.range.end_included = next_location.range.end_included;
+                    merged_location.range.end_inclusive = next_location.range.end_inclusive;
 
                     tokens.next(); // Consume the string literal token.
                 } else {
@@ -3668,7 +3668,7 @@ FOO 11 BAR",
                             line: 1,
                             column: 8
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 26,
                             line: 1,
                             column: 10
@@ -3696,7 +3696,7 @@ FOO 11 BAR",
                             line: 1,
                             column: 8
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 26,
                             line: 1,
                             column: 10
@@ -3723,7 +3723,7 @@ FOO 11 BAR",
                             line: 0,
                             column: 8
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 14,
                             line: 0,
                             column: 14
@@ -3781,7 +3781,7 @@ A",
                             line: 0,
                             column: 7
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 10,
                             line: 0,
                             column: 10
@@ -3859,7 +3859,7 @@ FOO(a) BAR(b) BUZZ(c)"#,
                             line: 1,
                             column: 8
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 27,
                             line: 1,
                             column: 10
@@ -3887,7 +3887,7 @@ FOO(1)",
                             line: 1,
                             column: 0
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 23,
                             line: 1,
                             column: 2
@@ -3915,7 +3915,7 @@ FOO(1, 2, 3)",
                             line: 1,
                             column: 0
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 23,
                             line: 1,
                             column: 2
@@ -3943,7 +3943,7 @@ FOO(abc",
                             line: 1,
                             column: 0
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 19,
                             line: 1,
                             column: 2
@@ -3971,7 +3971,7 @@ FOO(a b c)",
                             line: 1,
                             column: 0
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 19,
                             line: 1,
                             column: 2
@@ -3998,7 +3998,7 @@ FOO(a b c)",
                             line: 0,
                             column: 8
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 14,
                             line: 0,
                             column: 14
@@ -4109,7 +4109,7 @@ FOO(123)",
                             line: 1,
                             column: 0
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 35,
                             line: 1,
                             column: 2
@@ -4173,7 +4173,7 @@ STR",
                             line: 0,
                             column: 12
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 12,
                             line: 0,
                             column: 12
@@ -4201,7 +4201,7 @@ STR(foo)",
                             line: 0,
                             column: 16
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 18,
                             line: 0,
                             column: 18
@@ -4255,7 +4255,7 @@ CONCAT()",
                             line: 0,
                             column: 17
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 22,
                             line: 0,
                             column: 22
@@ -4283,7 +4283,7 @@ CONCAT(9, s)",
                             line: 0,
                             column: 21
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 24,
                             line: 0,
                             column: 24
@@ -4311,7 +4311,7 @@ CONCAT(hello, \"world\")",
                             line: 0,
                             column: 21
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 24,
                             line: 0,
                             column: 24
@@ -4339,7 +4339,7 @@ CONCAT(hello world, 2)",
                             line: 0,
                             column: 21
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 21,
                             line: 0,
                             column: 21
@@ -4367,7 +4367,7 @@ CONCAT(hello, world)",
                             line: 0,
                             column: 20
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 21,
                             line: 0,
                             column: 21
@@ -4395,7 +4395,7 @@ CONCAT(hello, world)",
                             line: 0,
                             column: 20
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 21,
                             line: 0,
                             column: 21
@@ -4423,7 +4423,7 @@ CONCAT(hello, world)",
                             line: 0,
                             column: 21
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 22,
                             line: 0,
                             column: 22
@@ -4451,7 +4451,7 @@ CONCAT(hello, world)",
                             line: 0,
                             column: 22
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 23,
                             line: 0,
                             column: 23
@@ -4912,7 +4912,7 @@ FOO
                             line: 1,
                             column: 9
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 25,
                             line: 1,
                             column: 24
@@ -4943,7 +4943,7 @@ FOO
                             line: 1,
                             column: 20
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 36,
                             line: 1,
                             column: 35
@@ -4974,7 +4974,7 @@ FOO
                             line: 2,
                             column: 1
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 28,
                             line: 2,
                             column: 7
@@ -5018,7 +5018,7 @@ FOO
                             line: 0,
                             column: 17
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 19,
                             line: 0,
                             column: 19
@@ -5152,7 +5152,7 @@ FOO
                             line: 0,
                             column: 7
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 24,
                             line: 0,
                             column: 24
@@ -5175,7 +5175,7 @@ FOO
                             line: 0,
                             column: 23,
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 25,
                             line: 0,
                             column: 25,
@@ -5230,7 +5230,7 @@ FOO
                             line: 0,
                             column: 33,
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 33,
                             line: 0,
                             column: 33,
@@ -5253,7 +5253,7 @@ FOO
                             line: 0,
                             column: 28,
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 30,
                             line: 0,
                             column: 30,
@@ -5276,7 +5276,7 @@ FOO
                             line: 0,
                             column: 24,
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 26,
                             line: 0,
                             column: 26,
@@ -5315,7 +5315,7 @@ FOO
                             line: 0,
                             column: 17,
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 22,
                             line: 0,
                             column: 22,
@@ -5466,7 +5466,7 @@ FOO
                         line: 1,
                         column: 8
                     },
-                    end_included: Position {
+                    end_inclusive: Position {
                         index: 13,
                         line: 1,
                         column: 12
@@ -5672,7 +5672,7 @@ FOO
                             line: 1,
                             column: 4,
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 21,
                             line: 1,
                             column: 20,
@@ -5699,7 +5699,7 @@ FOO
                             line: 0,
                             column: 1
                         },
-                        end_included: Position {
+                        end_inclusive: Position {
                             index: 14,
                             line: 0,
                             column: 14
@@ -5730,7 +5730,7 @@ FOO
                         line: 0,
                         column: 9
                     },
-                    end_included: Position {
+                    end_inclusive: Position {
                         index: 16,
                         line: 0,
                         column: 16
