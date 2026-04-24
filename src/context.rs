@@ -69,7 +69,7 @@ where
     // (identifier, number, string literal, or character literal). When true, an argument
     // may be an arbitrary sequence of tokens, allowing more complex expressions to be
     // passed as a single parameter.
-    pub enable_multiple_token_argument: bool,
+    pub enable_single_argument_multiple_tokens: bool,
 
     /// The file number currently being processed.
     pub current_file_item: FileItem,
@@ -97,7 +97,7 @@ where
         file_cache: &'a mut HeaderFileCache,
         reserved_identifiers: &'a [&'a str],
         resolve_relative_path_within_current_file: bool,
-        enable_multiple_token_argument: bool,
+        enable_single_argument_multiple_tokens: bool,
         current_file_number: usize,
         current_file_relative_path: &Path,
         current_file_canonical_full_path: &Path,
@@ -113,7 +113,7 @@ where
             header_file_cache: file_cache,
             reserved_identifiers,
             resolve_relative_path_within_current_file,
-            enable_multiple_token_argument,
+            enable_single_argument_multiple_tokens,
             current_file_item,
             macro_map: MacroMap::new(),
             included_files: Vec::new(),
@@ -129,7 +129,7 @@ where
         reserved_identifiers: &'a [&'a str],
         predefinitions: &HashMap<String, String>,
         resolve_relative_path_within_current_file: bool,
-        enable_multiple_token_argument: bool,
+        enable_single_argument_multiple_tokens: bool,
         current_file_number: usize,
         current_file_relative_path: &Path,
         current_file_canonical_full_path: &Path,
@@ -146,7 +146,7 @@ where
             reserved_identifiers,
             macro_map: MacroMap::from_key_values(predefinitions)?,
             resolve_relative_path_within_current_file,
-            enable_multiple_token_argument,
+            enable_single_argument_multiple_tokens,
             current_file_item,
             included_files: Vec::new(),
             prompts: Vec::new(),

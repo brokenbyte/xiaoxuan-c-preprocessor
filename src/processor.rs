@@ -100,7 +100,7 @@ pub fn process_source_file<T>(
     // (identifier, number, string literal, or character literal). When true, an argument
     // may be an arbitrary sequence of tokens, allowing more complex expressions to be
     // passed as a single parameter.
-    enable_multiple_token_argument: bool,
+    enable_single_argument_multiple_tokens: bool,
 
     // The number of the source file, used for error reporting.
     // It should begin with `FILE_NUMBER_SOURCE_FILE_BEGIN` (which default to 65536)
@@ -128,7 +128,7 @@ where
         reserved_identifiers,
         predefinitions,
         resolve_relative_path_within_current_file,
-        enable_multiple_token_argument,
+        enable_single_argument_multiple_tokens,
         source_file_number,
         source_file_path_name,
         source_file_canonical_full_path,
@@ -197,7 +197,7 @@ where
         reserved_identifiers: &'a [&'a str],
         predefinitions: &HashMap<String, String>,
         resolve_relative_path_within_current_file: bool,
-        enable_multiple_token_argument: bool,
+        enable_single_argument_multiple_tokens: bool,
         source_file_number: usize,
         source_file_path_name: &Path,
         source_file_canonical_full_path: &Path,
@@ -208,7 +208,7 @@ where
             reserved_identifiers,
             predefinitions,
             resolve_relative_path_within_current_file,
-            enable_multiple_token_argument,
+            enable_single_argument_multiple_tokens,
             source_file_number,
             source_file_path_name,
             source_file_canonical_full_path,
@@ -1864,8 +1864,8 @@ where
 
                                         code_parser.consume_closing_paren()?; // Consumes ')'
 
-                                        // Check `enable_multiple_token_argument` flag
-                                        if !self.context.enable_multiple_token_argument {
+                                        // Check `enable_single_argument_multiple_tokens` flag
+                                        if !self.context.enable_single_argument_multiple_tokens {
                                             // Check that each argument consists of exactly one token.
                                             for argument_token_with_locations in
                                                 &argument_token_with_locationss

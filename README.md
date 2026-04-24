@@ -28,8 +28,9 @@ ANCPP is provided primarily as a library for the ANCC project (XiaoXuan C Compil
   - [6.2 String and Character Literals](#62-string-and-character-literals)
   - [6.3 Numbers](#63-numbers)
   - [6.4 Punctuators](#64-punctuators)
-- [7. License](#7-license)
-- [8. References](#8-references)
+- [7. Linking](#7-linking)
+- [8. License](#8-license)
+- [9. References](#9-references)
 
 <!-- /code_chunk_output -->
 
@@ -46,7 +47,7 @@ To use ANCPP, add the following dependency to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ancpp = "0.1.0"
+ancpp = "1.0.0"
 ```
 
 Alternatively, you can add it using the following command:
@@ -102,7 +103,7 @@ let resolve_relative_path_within_current_file = false;
 // (identifier, number, string literal, character literal, or punctuator). When true, an argument
 // may be an arbitrary sequence of tokens, allowing more complex expressions to be
 // passed as a single parameter.
-let enable_multiple_token_argument = false;
+let enable_single_argument_multiple_tokens = false;
 
 // Add the predefined macros you need
 let mut predefinitions = HashMap::new();
@@ -132,7 +133,7 @@ let source_file_path_name = Path::new("src/main.c");
 
 // The canonical full path of the source file.
 // This is used to load the source file content actually.
-let source_file_full_path = Path::new("path/to/my/c/project/src/main.c");
+let source_file_full_path = Path::new("/path/to/my/c/project/src/main.c");
 
 let result = process_source_file(
         file_provider,
@@ -140,7 +141,7 @@ let result = process_source_file(
         &ancpp::token::C23_KEYWORDS,
         predefinitions,
         resolve_relative_path_within_current_file,
-        enable_multiple_token_argument,
+        enable_single_argument_multiple_tokens,
         source_file_number,
         source_file_path_name,
         source_file_full_path,
@@ -152,7 +153,7 @@ println!("{:?}", result);
 // Process another source file
 let source_file_number = FILE_NUMBER_SOURCE_FILE_BEGIN + 2;
 let source_file_path_name = Path::new("src/utils.c");
-let source_file_full_path = Path::new("path/to/my/c/project/src/utils.c");
+let source_file_full_path = Path::new("/path/to/my/c/project/src/utils.c");
 let result = process_source_file(
         file_provider,
         file_cache,
@@ -288,7 +289,7 @@ int x = BUZZ;                   // Expands to: `int x = ((42) + 1) * 2;`
 ```c
 #define A if (i==0              // Disabled: Unbalanced parentheses.
 #define B if (i==0) {           // Disabled: Balanced parentheses but unbalanced braces.
-#define D int n = nums[         // Disabled: Unbalanced brackets.
+#define D int nums[             // Disabled: Unbalanced brackets.
 #define C int nums[] = {        // Disabled: Balanced brackets but unbalanced braces.
 #define E do {                  // Disabled: Unbalanced braces.
 #define F } else {              // Disabled: Unbalanced braces.
@@ -608,7 +609,7 @@ int min_value = MIN(MIN(a,b), c);       // Disallowed: Argument "MIN(a,b)" is an
 
 This constraint significantly weakens the flexibility of function-like macros, but it ensures that function-like macro arguments are simple and predictable.
 
-If mulitple tokens are needed in an argument, you can enable the `enable_multiple_token_argument` flag in the `Processor` to allow it.
+If mulitple tokens are needed in an argument, you can enable the `enable_single_argument_multiple_tokens` flag in the `Processor` to allow it.
 
 > If something the C functions can do, prefer using C functions (inline functions if necessary) instead of function-like macros. Function-like macros should be used only in "static code generation" scenarios.
 
@@ -653,7 +654,7 @@ The expansion of arguments wouldn't break the arguments list, that is, the expan
 PRINT("hello", "world");    // Expands to: `"hello"; "world";`
 
 #define FOOBAR "foo", "bar"
-PRINT(FOOBAR, "buzz");      // Expands to: `"foo"; "bar"; "buzz";`
+PRINT(FOOBAR, "buzz");      // Expands to: `"foo", "bar"; "buzz";`
 
 // invocation of `PRINT(FOOBAR, "buzz")` still is two arguments,
 // it wouldn't become `PRINT("foo", "bar", "buzz")` which has three arguments.
@@ -1479,7 +1480,7 @@ Directive `#embed` also supports using a macro that expands to a file path:
 
 Note that the escape sequences are allowed in the file path when a string literal macro is used:
 
-```c#
+```c
 #define BINARY_FILE "data\\data.bin"
 #embed BINARY_FILE              // Backslash is escaped in string literal
 ```
@@ -1698,8 +1699,8 @@ String and character literal prefixes are also supported:
 | `U`    | UTF-32 character or string literal |
 | `u8`   | UTF-8 character or string literal  |
 
-- `L'A'`                // wide character literal
-- `u8"Hello"`           // UTF-8 string literal
+- `L'A'`: wide character literal
+- `u8"Hello"`: UTF-8 string literal
 
 `[ANCPP RESTRICTION]`: Multicharacter constant is not supported. e.g., `'AB'`, `u'CD'` are not allowed.
 
@@ -1777,7 +1778,7 @@ Punctuators include operators, brackets, delimiters, and other special symbols u
 | `>`        | Greater than             |
 | `>=`       | Greater than or equal to |
 | `&&`       | Logical AND              |
-| `||`       | Logical OR               |
+| `\|\|`     | Logical OR               |
 | `!`        | Logical NOT              |
 
 **Bitwise Operators**
@@ -1785,7 +1786,7 @@ Punctuators include operators, brackets, delimiters, and other special symbols u
 | Punctuator | Description          |
 |------------|----------------------|
 | `&`        | Bitwise AND          |
-| `|`        | Bitwise OR           |
+| `\|`       | Bitwise OR           |
 | `^`        | Bitwise XOR          |
 | `~`        | Bitwise NOT          |
 | `<<`       | Left shift           |
@@ -1802,7 +1803,7 @@ Punctuators include operators, brackets, delimiters, and other special symbols u
 | `/=`       | Division assignment       |
 | `%=`       | Modulus assignment        |
 | `&=`       | Bitwise AND assignment    |
-| `|=`       | Bitwise OR assignment     |
+| `\|=`      | Bitwise OR assignment     |
 | `^=`       | Bitwise XOR assignment    |
 | `<<=`      | Left shift assignment     |
 | `>>=`      | Right shift assignment    |
@@ -1831,12 +1832,17 @@ Punctuators include operators, brackets, delimiters, and other special symbols u
 | `:` and `?` | Conditional operator          |
 | `...`       | Ellipsis                      |
 
-## 7. License
+## 7. Linking
+
+- [ANCPP source code repository](https://github.com/hemashushu/xiaoxuan-c-preprocessor)
+- [XiaoXuan C Compiler](https://github.com/hemashushu/xiaoxuan-c-compiler)
+
+## 8. License
 
 See the "LICENSE" and "LICENSE.additional" files in the root directory of this project for details.
 
-## 8. References
+## 9. References
 
-- [The XiaoXuan C Compiler Project](https://github.com/hemashushu/xiaoxuan-c-compiler)
-- [C Reference](https://en.cppreference.com/w/c/preprocessor.html)
+- [CPP Reference](https://en.cppreference.com/w/c/preprocessor.html)
 - [GCC CPP Manual](https://gcc.gnu.org/onlinedocs/cpp/)
+- [The C standard](https://www.c-language.org/)
