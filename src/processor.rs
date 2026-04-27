@@ -16,11 +16,11 @@ use crate::{
     ast::{Branch, Condition, Define, If, Pragma, Program, Statement},
     context::{
         Context, FileItem, FileLocation, FilePathResolveResult, FilePathSource, FileProvider,
-        HeaderFileCache, MacroDefinition, MacroManipulationResult, PreprocessResult, Prompt,
-        PromptLevel,
+        HeaderFileCache, MacroDefinition, MacroManipulationResult, PreprocessResult,
     },
     error::{PreprocessError, PreprocessFileError},
     expression::evaluate,
+    linter::{LintLevel, Linter},
     location::Location,
     parser::parse_from_str,
     peekable_iter::PeekableIter,
@@ -43,6 +43,11 @@ use crate::{
 const EXTRA_OPERATORS: [&str; 3] = ["__has_include", "__has_embed", "__has_c_attribute"];
 
 /// Preprocesses a C source file.
+///
+/// - This function is used to preprocess C source files only, not header files.
+/// - Relevant header files will be loaded and processed automatically during preprocessing, and
+///   they will be cached in `header_file_cache` to avoid redundant parsing. Note that only header files
+///   (e.g. `header.h`) are cached, not source files (e.g. `main.c`).
 ///
 /// see also:
 /// - https://en.cppreference.com/w/c/language.html
@@ -172,8 +177,8 @@ where
     let concatenated = concatenate_adjacent_strings(&mut peekable_iter)?;
 
     let result = PreprocessResult {
-        output: concatenated,
-        prompts,
+        token_with_locations: concatenated,
+        linters: prompts,
     };
 
     Ok(result)
@@ -804,8 +809,8 @@ where
         _directive_range: &Range,
         message_range: &Range,
     ) -> Result<(), PreprocessFileError> {
-        let prompt = Prompt::MessageWithRange(
-            PromptLevel::Warning,
+        let prompt = Linter::MessageWithRange(
+            LintLevel::Warn,
             self.context.current_file_item.number,
             format!("User defined warning: {}", message),
             *message_range,
@@ -2256,7 +2261,8 @@ where
                                 return Err(PreprocessFileError {
                                     file_number: current_token_with_location.location.file_number,
                                     error: PreprocessError::MessageWithRange(
-                                        "The `__has_embed` operator requires a file path argument.".to_owned(),
+                                        "The `__has_embed` operator requires a file path argument."
+                                            .to_owned(),
                                         current_token_with_location.location.range,
                                     ),
                                 });
@@ -2841,8 +2847,8 @@ where
 
         if first_statement_opt.is_none() {
             // File is empty
-            self.context.prompts.push(Prompt::Message(
-                PromptLevel::Warning,
+            self.context.prompts.push(Linter::Message(
+                LintLevel::Warn,
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
                     .to_string(),
@@ -2914,8 +2920,8 @@ where
                 // The include guard macro name matches the suggested name.
 
                 // Suggest using `#pragma once`:
-                self.context.prompts.push(Prompt::Message(
-                    PromptLevel::Info,
+                self.context.prompts.push(Linter::Message(
+                    LintLevel::Info,
                     file_number_of_header_file,
                     "Consider adding additional `#pragma once` for better practice.".to_owned(),
                 ));
@@ -2923,8 +2929,8 @@ where
                 // The include guard macro name does not match the suggested name.
                 // Suggest renaming the include guard macro to follow the convention, which
                 // prevents potential conflicts with other macros.
-                self.context.prompts.push(Prompt::MessageWithRange(
-                    PromptLevel::Info,
+                self.context.prompts.push(Linter::MessageWithRange(
+                    LintLevel::Info,
                     file_number_of_header_file,
                     format!(
                         "Consider renaming the include guard macro to `{}` to follow the convention.",
@@ -2936,8 +2942,8 @@ where
         } else {
             // The file does not have an include guard or `#pragma once`.
             // We suggest adding `#pragma once`.
-            self.context.prompts.push(Prompt::Message(
-                PromptLevel::Warning,
+            self.context.prompts.push(Linter::Message(
+                LintLevel::Warn,
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
                     .to_owned(),
@@ -3242,7 +3248,10 @@ impl<'a> CodeParser<'a> {
             None => Err(PreprocessFileError::new(
                 self.last_location.file_number,
                 PreprocessError::MessageWithPosition(
-                    format!("Expected token \"{}\" after this position.", token_description),
+                    format!(
+                        "Expected token \"{}\" after this position.",
+                        token_description
+                    ),
                     self.last_location.range.end_inclusive,
                 ),
             )),
@@ -3337,8 +3346,9 @@ mod tests {
 
     use crate::{
         FILE_NUMBER_SOURCE_FILE_BEGIN,
-        context::{HeaderFileCache, Prompt, PromptLevel},
+        context::HeaderFileCache,
         error::{PreprocessError, PreprocessFileError},
+        linter::{LintLevel, Linter},
         location::Location,
         memory_file_provider::MemoryFileProvider,
         position::Position,
@@ -3350,8 +3360,8 @@ mod tests {
         },
     };
 
-    /// Help function to process a single source file with given predefinitions.
-    fn process_single_source_file(
+    // A helper function to process source code with predefinitions and return the full result, including output tokens and prompts.
+    fn process_with_predefinitions_and_result(
         src: &str,
         predefinitions: &HashMap<String, String>,
     ) -> Result<PreprocessResult, PreprocessFileError> {
@@ -3372,18 +3382,18 @@ mod tests {
         )
     }
 
-    /// Help function to process a single source file and get the output tokens.
-    fn process_single_source_file_and_get_tokens(
+    // A helper function to process source code with predefinitions and return the output tokens directly.
+    fn process_with_predefinitions(
         src: &str,
         predefinitions: &HashMap<String, String>,
     ) -> Vec<TokenWithLocation> {
-        process_single_source_file(src, predefinitions)
+        process_with_predefinitions_and_result(src, predefinitions)
             .unwrap()
-            .output
+            .token_with_locations
     }
 
-    /// Help function to process a single source file with given predefinitions.
-    fn process_multiple_tokens_argument(
+    // A helper function to process source code with predefinitions and return the full result, including output tokens and prompts, with permissive mode enabled.
+    fn process_with_permissive_and_result(
         src: &str,
         predefinitions: &HashMap<String, String>,
     ) -> Result<PreprocessResult, PreprocessFileError> {
@@ -3404,18 +3414,18 @@ mod tests {
         )
     }
 
-    /// Help function to process a single source file and get the output tokens.
-    fn process_multiple_tokens_argument_and_get_tokens(
+    // A helper function to process source code with predefinitions and return the output tokens directly, with permissive mode enabled.
+    fn process_with_permissive(
         src: &str,
         predefinitions: &HashMap<String, String>,
     ) -> Vec<TokenWithLocation> {
-        process_multiple_tokens_argument(src, predefinitions)
+        process_with_permissive_and_result(src, predefinitions)
             .unwrap()
-            .output
+            .token_with_locations
     }
 
-    /// Help function to process multiple source files with given header files.
-    fn process_multiple_source_files(
+    // A helper function to process source code with headers and return the full result, including output tokens and prompts.
+    fn process_with_headers_and_result(
         main_src: &str,
         user_header_files: &[(&str, &str)],
         user_binary_files: &[(&str, &[u8])],
@@ -3453,24 +3463,24 @@ mod tests {
         )
     }
 
-    /// Help function to process multiple source files and get the output tokens.
-    fn process_multiple_source_files_and_get_tokens(
+    // A helper function to process source code with headers and return the output tokens directly.
+    fn process_with_headers(
         main_src: &str,
         user_header_files: &[(&str, &str)],
         user_binary_files: &[(&str, &[u8])],
         system_header_files: &[(&str, &str)],
     ) -> Vec<TokenWithLocation> {
-        process_multiple_source_files(
+        process_with_headers_and_result(
             main_src,
             user_header_files,
             user_binary_files,
             system_header_files,
         )
         .unwrap()
-        .output
+        .token_with_locations
     }
 
-    /// Help function to print tokens as a string.
+    // A helper function to print tokens for testing purposes.
     fn print_tokens(token_with_location: &[TokenWithLocation]) -> String {
         token_with_location
             .iter()
@@ -3482,7 +3492,7 @@ mod tests {
     #[test]
     fn test_process_code_without_directive() {
         let predefinitions = HashMap::new();
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 int main() {
     return 0;
@@ -3551,7 +3561,7 @@ int main() {
         predefinitions.insert("F".to_string(), "+".to_string());
         predefinitions.insert("G".to_string(), "".to_string()); // Empty
 
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 A B C D E F G",
             &predefinitions,
@@ -3567,7 +3577,7 @@ A B C D E F G",
         predefinitions.insert("Y".to_string(), "X".to_string());
         predefinitions.insert("Z".to_string(), "Y".to_string());
 
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 A B C M X Y Z",
             &predefinitions,
@@ -3578,7 +3588,7 @@ A B C M X Y Z",
     #[test]
     fn test_process_builtin_macro() {
         let predefinitions = HashMap::new();
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 __FILE__;
 __LINE__;
@@ -3608,7 +3618,7 @@ __STDC_EMBED_EMPTY__;
     fn test_process_define() {
         let mut predefinitions = HashMap::new();
 
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 #define A 123
 #define B 3.14
@@ -3623,7 +3633,7 @@ A B C D E F G",
         assert_eq!(print_tokens(&tokens), "123 3.14 '🦛' \"✨ abc\" foo +");
 
         // Reference
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 #define A '😆'
 #define B A
@@ -3639,7 +3649,7 @@ A B C M X Y Z",
 
         // Work with predefinitions
         predefinitions.insert("FOO".to_string(), "\"巴拉巴拉呣呣\"".to_string());
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 #define BAR FOO
 FOO 11 BAR",
@@ -3652,7 +3662,7 @@ FOO 11 BAR",
 
         // Error: Redefine without undefine
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define FOO 'a'
 #define FOO 'b'",
@@ -3680,7 +3690,7 @@ FOO 11 BAR",
 
         // Error: Redefine with same definition
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define FOO 'a'
 #define FOO 'a'",
@@ -3708,7 +3718,7 @@ FOO 11 BAR",
 
         // Error: Define reserved identifier: 'defined'
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define defined 123",
                 &HashMap::new(),
@@ -3735,7 +3745,7 @@ FOO 11 BAR",
 
         // Error: Define reserved identifier: the C keyword `return`
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
         #define return break",
                 &HashMap::new(),
@@ -3753,7 +3763,7 @@ FOO 11 BAR",
 
     #[test]
     fn test_process_undefine() {
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 #define A 123
 #undef A
@@ -3765,7 +3775,7 @@ A",
 
         // Error: undefine non-existing macro
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #undef NONE
 ",
@@ -3795,7 +3805,7 @@ A",
     #[test]
     fn test_process_define_function() {
         let predefinitions = HashMap::new();
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             r#"
 #define FOO(x) x
 #define BAR(x, y) x y
@@ -3818,7 +3828,7 @@ BAR(A,B)"#,
         assert_eq!(print_tokens(&tokens), r#""foo" foo 123 '✨' 'a' 'a'"#);
 
         // Macro invocation inside macro body
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             r#"
 #define FOO(a) 1 a
 #define BAR(x, y) 2 FOO(x) y
@@ -3830,7 +3840,7 @@ BUZZ(hippo)"#,
         assert_eq!(print_tokens(&tokens), "3 2 1 hippo spark");
 
         // Self-reference macro invocation
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             r#"
 #define FOO(x) BAR(x)
 #define BAR(y) FOO(y)
@@ -3843,7 +3853,7 @@ FOO(a) BAR(b) BUZZ(c)"#,
 
         // Error: redefine function-like macro
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define FOO(x) x
 #define FOO(y) y",
@@ -3871,7 +3881,7 @@ FOO(a) BAR(b) BUZZ(c)"#,
 
         // Error: not enough arguments for function-like macro
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define FOO(x,y) x y
 FOO(1)",
@@ -3899,7 +3909,7 @@ FOO(1)",
 
         // Error: too many arguments for function-like macro
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define FOO(x,y) x y
 FOO(1, 2, 3)",
@@ -3927,7 +3937,7 @@ FOO(1, 2, 3)",
 
         // Error: Missing closing parenthesis
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define FOO(x) x
 FOO(abc",
@@ -3955,7 +3965,7 @@ FOO(abc",
 
         // Error: multiple tokens as argument
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define FOO(x) x
 FOO(a b c)",
@@ -3983,7 +3993,7 @@ FOO(a b c)",
 
         // Error: define reserved identifier: 'defined'
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define defined(x) 123",
                 &predefinitions
@@ -4014,7 +4024,7 @@ FOO(a b c)",
         let predefinitions = HashMap::new();
 
         // Multiple tokens as argument
-        let tokens = process_multiple_tokens_argument_and_get_tokens(
+        let tokens = process_with_permissive(
             r#"
 #define FOO(x,y) x; y
 FOO(1+2,abc)"#,
@@ -4023,7 +4033,7 @@ FOO(1+2,abc)"#,
         assert_eq!(print_tokens(&tokens), "1 + 2 ; abc");
 
         // Commas inside argument
-        let tokens = process_multiple_tokens_argument_and_get_tokens(
+        let tokens = process_with_permissive(
             r#"
 #define FOO(x,y) x; y
 FOO(2*(a+b,c-d), (x,y,z))"#,
@@ -4035,7 +4045,7 @@ FOO(2*(a+b,c-d), (x,y,z))"#,
         );
 
         // Macro invocation inside argument
-        let tokens = process_multiple_tokens_argument_and_get_tokens(
+        let tokens = process_with_permissive(
             r#"
 #define FOO(x) x
 #define BAR(y) y
@@ -4045,7 +4055,7 @@ FOO(BAR(hello))"#,
         assert_eq!(print_tokens(&tokens), "hello");
 
         // Nested macro invocation inside argument
-        let tokens = process_multiple_tokens_argument_and_get_tokens(
+        let tokens = process_with_permissive(
             r#"
 #define FOO(x) (x+1)
 FOO(FOO(hello))"#,
@@ -4054,7 +4064,7 @@ FOO(FOO(hello))"#,
         assert_eq!(print_tokens(&tokens), "( ( hello + 1 ) + 1 )");
 
         // Self-reference macro invocation inside argument
-        let tokens = process_multiple_tokens_argument_and_get_tokens(
+        let tokens = process_with_permissive(
             r#"
 #define FOO(x) FOO(x+1)
 FOO(hello)"#,
@@ -4066,7 +4076,7 @@ FOO(hello)"#,
     #[test]
     fn test_process_define_function_variadic() {
         let predefinitions = HashMap::new();
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 // Outputs argument list as is
 #define FOO(...) __VA_ARGS__
@@ -4093,7 +4103,7 @@ BUZZ(last,11,13);",
 
         // Error: not enough arguments for variadic macro
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define FOO(x,y,...) __VA_ARGS__
 FOO(123)",
@@ -4123,7 +4133,7 @@ FOO(123)",
     #[test]
     fn test_process_stringizing() {
         let predefinitions = HashMap::new();
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             r#"
 #define FOO '🐘'
 #define STR(x) #x
@@ -4145,7 +4155,7 @@ STR3(11, '🦛', "abc", id, FOO);"#,
 
         // Multiple tokens as argument for stringizing
 
-        let tokens = process_multiple_tokens_argument_and_get_tokens(
+        let tokens = process_with_permissive(
             r#"
 #define STR(...) #__VA_ARGS__
 STR(a, b, c, d);
@@ -4157,7 +4167,7 @@ STR(a b, c d);"#,
 
         // Error: stringizing on non-function-like macro
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define STR #123
 STR",
@@ -4185,7 +4195,7 @@ STR",
 
         // Error: stringizing on non-parameter
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define STR(x) #123
 STR(foo)",
@@ -4215,7 +4225,7 @@ STR(foo)",
     #[test]
     fn test_process_token_concatenation() {
         let predefinitions = HashMap::new();
-        let tokens = process_single_source_file_and_get_tokens(
+        let tokens = process_with_predefinitions(
             "\
 #define FOO() foo##1
 #define BAR() sprite ## 2 ## bar
@@ -4239,7 +4249,7 @@ CONCAT(ABC, 42)
 
         // Error: invalid identifier after concatenation
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define CONCAT() 9 ## s
 CONCAT()",
@@ -4267,7 +4277,7 @@ CONCAT()",
 
         // Error: invalid identifier, through parameter concatenation
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define CONCAT(a, b) a##b
 CONCAT(9, s)",
@@ -4295,7 +4305,7 @@ CONCAT(9, s)",
 
         // Error: invalid identifier: concatenate an identifier and a string
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define CONCAT(a, b) a##b
 CONCAT(hello, \"world\")",
@@ -4323,7 +4333,7 @@ CONCAT(hello, \"world\")",
 
         // Error: concatenate a multiple tokens argument
         assert!(matches!(
-            process_multiple_tokens_argument(
+            process_with_permissive_and_result(
                 "\
 #define CONCAT(a, b) a##b
 CONCAT(hello world, 2)",
@@ -4351,7 +4361,7 @@ CONCAT(hello world, 2)",
 
         // Error: `##` is followed by `__VA_ARGS__`
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define CONCAT(...) ##__VA_ARGS__
 CONCAT(hello, world)",
@@ -4379,7 +4389,7 @@ CONCAT(hello, world)",
 
         // Error: `##` is followed by `__VA_OPT__`
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define CONCAT(...) ##__VA_OPT__
 CONCAT(hello, world)",
@@ -4407,7 +4417,7 @@ CONCAT(hello, world)",
 
         // Error: `##` is preceded by nothing
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define CONCAT(a, b) ##a
 CONCAT(hello, world)",
@@ -4435,7 +4445,7 @@ CONCAT(hello, world)",
 
         // Error: `##` is followed by nothing
         assert!(matches!(
-            process_single_source_file(
+            process_with_predefinitions_and_result(
                 "\
 #define CONCAT(a, b) a##
 CONCAT(hello, world)",
@@ -4468,7 +4478,7 @@ CONCAT(hello, world)",
 
         // Test `ifdef`
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #define FOO 'a'
 #define BAR
@@ -4498,7 +4508,7 @@ CONCAT(hello, world)",
 
         // Test `ifndef`
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #define FOO 'a'
 #define BAR
@@ -4529,7 +4539,7 @@ CONCAT(hello, world)",
         // Test `elifdef` and `elifndef`
 
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #define FOO
 #define BAR
@@ -4565,7 +4575,7 @@ CONCAT(hello, world)",
 
         // Test `if` and operator `defined`
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #define FOO 'a'
 
@@ -4600,7 +4610,7 @@ CONCAT(hello, world)",
 
         // Test 0, 1, -1, `true` and `false`
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #if 0
     a
@@ -4639,7 +4649,7 @@ CONCAT(hello, world)",
 
         // Test `elif`
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #if false
     a
@@ -4660,7 +4670,7 @@ CONCAT(hello, world)",
 
         // Test `if` and (integer) binary and unary operators
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #define FOO 3
 #define BAR 5
@@ -4743,7 +4753,7 @@ CONCAT(hello, world)",
 
         // Test operator precedence
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #if 1 + 2 * 3 == 7
     a   // 👈
@@ -4780,7 +4790,7 @@ CONCAT(hello, world)",
 
     #[test]
     fn test_process_include() {
-        let tokens = process_multiple_source_files_and_get_tokens(
+        let tokens = process_with_headers(
             r#"
 #include "foo.h"
 FOO
@@ -4793,7 +4803,7 @@ FOO
         assert_eq!(print_tokens(&tokens), "42");
 
         // include the same header file multiple times
-        let tokens = process_multiple_source_files_and_get_tokens(
+        let tokens = process_with_headers(
             r#"
 #include "foo.h"
 #include "foo.h"
@@ -4807,7 +4817,7 @@ FOO
         assert_eq!(print_tokens(&tokens), "42");
 
         // nested include
-        let tokens = process_multiple_source_files_and_get_tokens(
+        let tokens = process_with_headers(
             r#"
 #include "foo.h"
 FOO BAR
@@ -4829,7 +4839,7 @@ FOO BAR
         assert_eq!(print_tokens(&tokens), "11 13");
 
         // include system header file
-        let tokens = process_multiple_source_files_and_get_tokens(
+        let tokens = process_with_headers(
             r#"
 #include <std/io.h>
 FOO
@@ -4842,7 +4852,7 @@ FOO
         assert_eq!(print_tokens(&tokens), "42");
 
         // include system header file through quoted include
-        let tokens = process_multiple_source_files_and_get_tokens(
+        let tokens = process_with_headers(
             r#"
 #include "std/io.h"
 FOO
@@ -4855,7 +4865,7 @@ FOO
         assert_eq!(print_tokens(&tokens), "42");
 
         // include header file with macro (with quoted string literal)
-        let tokens = process_multiple_source_files_and_get_tokens(
+        let tokens = process_with_headers(
             r#"
 #define HEADER_FILE "foo.h"
 #include HEADER_FILE
@@ -4874,7 +4884,7 @@ FOO
         assert_eq!(print_tokens(&tokens), "42");
 
         // include header file with macro (with angle bracket)
-        let tokens = process_multiple_source_files_and_get_tokens(
+        let tokens = process_with_headers(
             r#"
 #define HEADER_FILE <std/io.h>
 #include HEADER_FILE
@@ -4894,7 +4904,7 @@ FOO
 
         // Error: include non-existing file
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #include "non_existing.h"
 "#,
@@ -4924,7 +4934,7 @@ FOO
 
         // Error: include with identifier which expands to non-existing file
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #define HEADER_FILE "non_existing.h"
 #include HEADER_FILE
@@ -4955,7 +4965,7 @@ FOO
 
         // Error: include with identifier which expands to empty
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #define HEADER_FILE
 #include HEADER_FILE
@@ -4986,7 +4996,7 @@ FOO
 
         // Error: include with a number literal
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"#include 123"#,
                 &[],
                 &[],
@@ -5002,12 +5012,9 @@ FOO
             if range == Range::from_detail(9, 0, 9, 3)
         ));
 
-        let a = process_multiple_source_files(r#"#include "foo.h" bar"#, &[], &[], &[]);
-        println!("{:?}", a);
-
         // Error: include with an identifier that has extraneous trailing tokens.
         assert!(matches!(
-            process_multiple_source_files(r#"#include "foo.h" bar"#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#include "foo.h" bar"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
@@ -5032,7 +5039,7 @@ FOO
     #[test]
     fn test_process_embed() {
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #embed "foo.bin"
 "#,
@@ -5045,7 +5052,7 @@ FOO
 
         // Test `limit` option
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #embed "foo.bin" limit(100)
 "#,
@@ -5058,7 +5065,7 @@ FOO
 
         // Test `prefix` and `suffix` options
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #embed "foo.bin" limit(3) prefix(0xaa, 11, 'a') suffix(0)
 "#,
@@ -5071,7 +5078,7 @@ FOO
 
         // Test `if_empty` option
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #embed "foo.bin" limit(3) if_empty(0x11,0x13,0x17,0x19) prefix(0x3,0x5,0x7) suffix(0x23, 0x29)
 "#,
@@ -5084,7 +5091,7 @@ FOO
 
         // load binary multiple times
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #embed "foo.bin"
 ;
@@ -5099,7 +5106,7 @@ FOO
 
         // Load binary with macro file name
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #define FOO "foo.bin"
 #embed FOO
@@ -5113,7 +5120,7 @@ FOO
 
         // Load binary with macro file name and options
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #define FOO "foo.bin"
 #embed FOO limit(3)
@@ -5127,7 +5134,7 @@ FOO
 
         // Load binary with macro that expand to file name and options
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #define FOO "foo.bin" limit(3)
 #embed FOO
@@ -5141,7 +5148,7 @@ FOO
 
         // Error: include non-existing file
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "non_existing.bin""#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#embed "non_existing.bin""#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
@@ -5164,7 +5171,7 @@ FOO
 
         // Error: invalid parameter value
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "foo.bin" limit(abc)"#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#embed "foo.bin" limit(abc)"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
@@ -5187,7 +5194,7 @@ FOO
 
         // Error: missing opening parenthesis in parameter value
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "foo.bin" limit 100"#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#embed "foo.bin" limit 100"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithPosition(
@@ -5203,7 +5210,7 @@ FOO
 
         // Error: missing closing parenthesis in parameter value
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "foo.bin" limit(100"#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#embed "foo.bin" limit(100"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithPosition(
@@ -5219,7 +5226,12 @@ FOO
 
         // Error: unsupported data type in data list
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "foo.bin" prefix(11, 'a', c)"#, &[], &[], &[],),
+            process_with_headers_and_result(
+                r#"#embed "foo.bin" prefix(11, 'a', c)"#,
+                &[],
+                &[],
+                &[],
+            ),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
@@ -5242,7 +5254,7 @@ FOO
 
         // Error: number value exceeds byte range
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "foo.bin" prefix(42, 256)"#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#embed "foo.bin" prefix(42, 256)"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
@@ -5265,7 +5277,7 @@ FOO
 
         // Error: char value exceeds byte range
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "foo.bin" prefix('光', 'a')"#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#embed "foo.bin" prefix('光', 'a')"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
@@ -5288,7 +5300,7 @@ FOO
 
         // Error: missing commas in the data list
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "foo.bin" prefix(11 13)"#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#embed "foo.bin" prefix(11 13)"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithPosition(
@@ -5304,7 +5316,7 @@ FOO
 
         // Error: unsupported parameter name
         assert!(matches!(
-            process_multiple_source_files(r#"#embed "foo.bin" offset(10)"#, &[], &[], &[],),
+            process_with_headers_and_result(r#"#embed "foo.bin" offset(10)"#, &[], &[], &[],),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
@@ -5330,7 +5342,7 @@ FOO
     fn test_process_include_guard_check() {
         // Empty header file
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #include "foo.h"
 "#,
@@ -5339,14 +5351,14 @@ FOO
                 &[],
             )
             .unwrap()
-            .prompts
+            .linters
             .first(),
-            Some(Prompt::Message(PromptLevel::Warning, 1, _))
+            Some(Linter::Message(LintLevel::Warn, 1, _))
         ));
 
         // neither include guard nor `#pragma once` is present
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #include "foo.h"
 "#,
@@ -5360,14 +5372,14 @@ FOO
                 &[],
             )
             .unwrap()
-            .prompts
+            .linters
             .first(),
-            Some(Prompt::Message(PromptLevel::Warning, 1, _))
+            Some(Linter::Message(LintLevel::Warn, 1, _))
         ));
 
         // `#pragma once` is present, no info or warning
         assert!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #include "foo.h"
 "#,
@@ -5382,13 +5394,13 @@ FOO
                 &[],
             )
             .unwrap()
-            .prompts
+            .linters
             .is_empty()
         );
 
         // include guard is present, suggest adding additional `#pragma once`
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #include "foo.h"
 "#,
@@ -5405,15 +5417,15 @@ FOO
                 &[],
             )
             .unwrap()
-            .prompts
+            .linters
             .first(),
-            Some(Prompt::Message(PromptLevel::Info, 1, _))
+            Some(Linter::Message(LintLevel::Info, 1, _))
         ));
 
         // include guard is present, the macro name follows the convention,
         // though it is not the suggested one.
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #include "foo.h"
 "#,
@@ -5430,14 +5442,14 @@ FOO
                 &[],
             )
             .unwrap()
-            .prompts
+            .linters
             .first(),
-            Some(Prompt::Message(PromptLevel::Info, 1, _))
+            Some(Linter::Message(LintLevel::Info, 1, _))
         ));
 
         // include guard is present, but the macro name does not follow the suggested convention
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #include "foo.h"
 "#,
@@ -5454,10 +5466,10 @@ FOO
                 &[],
             )
             .unwrap()
-            .prompts
+            .linters
             .first(),
-            Some(Prompt::MessageWithRange(
-                PromptLevel::Info,
+            Some(Linter::MessageWithRange(
+                LintLevel::Info,
                 1,
                 _,
                 Range {
@@ -5480,7 +5492,7 @@ FOO
     fn test_process_operator_has_include() {
         // Test `#has_include`
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #define HEADER_FILE "foo.h"
 
@@ -5514,7 +5526,7 @@ FOO
     fn test_process_operator_has_embed() {
         // Test `#has_embed`
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #define FOO_BIN "foo.bin"
 #define BAR_BIN "bar.bin" limit(10)
@@ -5613,7 +5625,7 @@ FOO
     fn test_process_operator_has_c_attribute() {
         // Test `#has_c_attribute`
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #if __has_c_attribute(deprecated)
     11
@@ -5636,7 +5648,7 @@ FOO
 
         // Test `#has_c_attribute` with non-existing attribute
         assert_eq!(
-            print_tokens(&process_multiple_source_files_and_get_tokens(
+            print_tokens(&process_with_headers(
                 r#"
 #if __has_c_attribute(__non_existing__)
     11
@@ -5652,7 +5664,7 @@ FOO
         );
 
         assert!(matches!(
-            process_multiple_source_files(
+            process_with_headers_and_result(
                 r#"
 #if __has_c_attribute deprecated
     // error: missing parentheses
@@ -5688,7 +5700,7 @@ FOO
         let predefinitions = HashMap::new();
 
         assert!(matches!(
-            process_single_source_file(r#"#error "foobar""#, &predefinitions,),
+            process_with_predefinitions_and_result(r#"#error "foobar""#, &predefinitions,),
             Err(PreprocessFileError {
                 file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
                 error: PreprocessError::MessageWithRange(
@@ -5715,13 +5727,13 @@ FOO
         let predefinitions = HashMap::new();
 
         assert!(matches!(
-            process_single_source_file(r#"#warning "foobar""#, &predefinitions,)
+            process_with_predefinitions_and_result(r#"#warning "foobar""#, &predefinitions,)
                 .unwrap()
-                .prompts
+                .linters
                 .first()
                 .unwrap(),
-            Prompt::MessageWithRange(
-                PromptLevel::Warning,
+            Linter::MessageWithRange(
+                LintLevel::Warn,
                 FILE_NUMBER_SOURCE_FILE_BEGIN,
                 _,
                 Range {
@@ -5746,7 +5758,7 @@ FOO
 
         // pragmas are ignored currently, so the output should be empty.
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 "\
 #pragma STDC FENV_ACCESS ON
 #pragma STDC FP_CONTRACT OFF
@@ -5766,7 +5778,7 @@ WORLD
         let predefinitions = HashMap::new();
 
         assert_eq!(
-            print_tokens(&process_single_source_file_and_get_tokens(
+            print_tokens(&process_with_predefinitions(
                 r#"
 #define STR1 "Hello"
 #define STR2 "World"
@@ -5786,7 +5798,7 @@ STR3
         );
 
         assert_eq!(
-            print_tokens(&process_multiple_tokens_argument_and_get_tokens(
+            print_tokens(&process_with_permissive(
                 r#"
 #define FOO(x) x
 
@@ -5806,7 +5818,7 @@ FOO(
 
         // Error: concatenates string literals with different encoding types.
         assert!(matches!(
-            process_single_source_file(r#""abc" u8"xyz""#, &predefinitions),
+            process_with_predefinitions_and_result(r#""abc" u8"xyz""#, &predefinitions),
             Err(
                 PreprocessFileError {
                     file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,

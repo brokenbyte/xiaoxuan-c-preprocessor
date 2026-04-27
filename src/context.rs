@@ -14,9 +14,8 @@ use crate::{
     ast::Program,
     error::PreprocessError,
     lexer::lex_from_clean_str,
+    linter::Linter,
     location::Location,
-    position::Position,
-    range::Range,
     token::{TokenWithLocation, TokenWithRange},
 };
 
@@ -80,7 +79,7 @@ where
     pub included_files: Vec<FileLocation>,
 
     /// User-facing messages, warnings, or information.
-    pub prompts: Vec<Prompt>,
+    pub prompts: Vec<Linter>,
 
     /// Output tokens generated during preprocessing.
     pub output: Vec<TokenWithLocation>,
@@ -346,8 +345,8 @@ impl FilePathResolveResult {
 
 #[derive(Debug, PartialEq)]
 pub struct PreprocessResult {
-    pub output: Vec<TokenWithLocation>,
-    pub prompts: Vec<Prompt>,
+    pub token_with_locations: Vec<TokenWithLocation>,
+    pub linters: Vec<Linter>,
 }
 
 /// Canonicalizes a given path without checking the real file system.
@@ -357,13 +356,11 @@ pub struct PreprocessResult {
 /// Returns a new `PathBuf` with the normalized path.
 pub fn normalize_path(src: &Path) -> PathBuf {
     let mut output = PathBuf::new();
-println!("normalize_path: src = {:?}", src);
+
     let components = src.components();
     for component in components {
-        println!("  component: {:?}", component);
         match component {
-            Component::Prefix(disk) =>
-            {
+            Component::Prefix(disk) => {
                 output.push(disk.as_os_str());
                 // unimplemented!("todo: handle prefix components"),
             }
@@ -613,20 +610,4 @@ impl MacroMap {
             None => false,
         }
     }
-}
-
-/// `Prompt` is similar to `PreprocessError`, but is intended for user-facing messages
-/// that do not necessarily indicate an error. It can be used to display informational
-/// messages, warnings, or other information relevant to the user.
-#[derive(Debug, PartialEq)]
-pub enum Prompt {
-    Message(PromptLevel, /* file number */ usize, String),
-    MessageWithPosition(PromptLevel, /* file number */ usize, String, Position),
-    MessageWithRange(PromptLevel, /* file number */ usize, String, Range),
-}
-
-#[derive(Debug, PartialEq)]
-pub enum PromptLevel {
-    Info,
-    Warning,
 }

@@ -19,9 +19,10 @@ pub mod ast;
 pub mod ast_printer;
 pub mod context;
 pub mod error;
-pub mod error_printer;
+pub mod linter;
 pub mod memory_file_provider;
 pub mod native_file_provider;
+pub mod source_message;
 pub mod token;
 
 pub use processor::process_source_file;

@@ -870,7 +870,7 @@ mod tests {
     fn format(s: &str) -> String {
         match parse_from_str(s) {
             Ok(program) => print_program_to_string(&program),
-            Err(err) => panic!("{}", err.with_source(s)),
+            Err(_) => unreachable!(),
         }
     }
 

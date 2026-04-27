@@ -87,7 +87,7 @@ fn process_single_source_file_and_get_tokens(
 ) -> Vec<TokenWithLocation> {
     process_single_source_file(src, predefinitions)
         .unwrap()
-        .output
+        .token_with_locations
 }
 
 #[test]

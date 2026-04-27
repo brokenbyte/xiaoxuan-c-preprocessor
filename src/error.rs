@@ -4,9 +4,14 @@
 // the Mozilla Public License version 2.0 and additional exceptions.
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
-use std::fmt::Display;
-
-use crate::{position::Position, range::Range};
+use crate::{
+    position::Position,
+    range::Range,
+    source_message::{
+        attach_with_snippet_by_last_position, attach_with_snippet_by_position,
+        attach_with_snippet_by_range,
+    },
+};
 
 #[derive(Debug, PartialEq)]
 pub enum PreprocessError {
@@ -16,39 +21,13 @@ pub enum PreprocessError {
     MessageWithRange(String, Range),
 }
 
-impl Display for PreprocessError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            PreprocessError::Message(msg) => f.write_str(msg),
-            PreprocessError::UnexpectedEndOfDocument(detail) => {
-                writeln!(f, "Unexpected to reach the end of document.")?;
-                write!(f, "{}", detail)
-            }
-            PreprocessError::MessageWithPosition(detail, position) => {
-                writeln!(
-                    f,
-                    "Error at line: {} column: {}",
-                    position.line + 1,
-                    position.column + 1
-                )?;
-                write!(f, "{}", detail)
-            }
-            PreprocessError::MessageWithRange(detail, range) => {
-                writeln!(
-                    f,
-                    "Error from line: {} column: {}, to line: {} column: {}",
-                    range.start.line + 1,
-                    range.start.column + 1,
-                    range.end_inclusive.line + 1,
-                    range.end_inclusive.column + 1
-                )?;
-                write!(f, "{}", detail)
-            }
-        }
-    }
-}
+// impl Display for PreprocessError {
+//     fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//         unimplemented!()
+//     }
+// }
 
-impl std::error::Error for PreprocessError {}
+// impl std::error::Error for PreprocessError {}
 
 #[derive(Debug, PartialEq)]
 pub struct PreprocessFileError {
@@ -62,10 +41,61 @@ impl PreprocessFileError {
     }
 }
 
-impl Display for PreprocessFileError {
-    fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        unimplemented!()
+// impl Display for PreprocessFileError {
+//     fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//         unimplemented!()
+//     }
+// }
+
+// impl std::error::Error for PreprocessFileError {}
+
+impl PreprocessFileError {
+    pub fn source_message(
+        &self,
+        source_file_canonical_full_path: &str,
+        source_text_content: &str,
+    ) -> String {
+        match &self.error {
+            PreprocessError::Message(msg) => {
+                let title = format!("Error: {}", msg);
+                let file = format!("File: {}", source_file_canonical_full_path);
+                format!("{}\n{}", title, file)
+            }
+            PreprocessError::UnexpectedEndOfDocument(msg) => {
+                let title = "Error:".to_owned();
+                let message = attach_with_snippet_by_last_position(source_text_content, msg);
+                let file = format!("File: {}", source_file_canonical_full_path);
+                format!("{}\n{}\n{}", title, message, file)
+            }
+            PreprocessError::MessageWithPosition(msg, position) => {
+                let title = "Error:".to_owned();
+                let message =
+                    attach_with_snippet_by_position(source_text_content, position.index, msg);
+                let file = format!("File: {}", source_file_canonical_full_path);
+                let location = format!(
+                    "Position: line {}, column {}",
+                    position.line + 1,
+                    position.column + 1
+                );
+
+                format!("{}\n{}\n{}\n{}", title, message, location, file)
+            }
+            PreprocessError::MessageWithRange(msg, range) => {
+                let title = "Error:".to_owned();
+                let message = attach_with_snippet_by_range(
+                    source_text_content,
+                    range.start.index,
+                    range.end_inclusive.index - range.start.index + 1,
+                    msg,
+                );
+                let file = format!("File: {}", source_file_canonical_full_path);
+                let location = format!(
+                    "Position: line {}, column {}",
+                    range.start.line + 1,
+                    range.start.column + 1,
+                );
+                format!("{}\n{}\n{}\n{}", title, message, location, file)
+            }
+        }
     }
 }
-
-impl std::error::Error for PreprocessFileError {}
