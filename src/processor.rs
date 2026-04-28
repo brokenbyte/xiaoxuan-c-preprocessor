@@ -64,7 +64,7 @@ pub fn process_source_file<T>(
 
     // Identifiers which are used to prevent defining macros with these names.
     // They are usually C keywords, such as `int`, `return`, `if`, `else`, etc.
-    // You may simply use `token::C23_KEYWORDS`.
+    // You may simply use `token::C23_KEYWORD_STRS`.
     reserved_identifiers: &[&str],
 
     // The predefined macros to be used during preprocessing.
@@ -169,7 +169,7 @@ where
     // e.g. "hello" " " "world" -> "hello world"
     // see: https://en.cppreference.com/w/c/language/translation_phases.html
     let Context {
-        prompts, output, ..
+        linters, output, ..
     } = processor.context;
 
     let mut iter = output.into_iter();
@@ -178,7 +178,7 @@ where
 
     let result = PreprocessResult {
         token_with_locations: concatenated,
-        linters: prompts,
+        linters,
     };
 
     Ok(result)
@@ -816,7 +816,7 @@ where
             *message_range,
         );
 
-        self.context.prompts.push(prompt);
+        self.context.linters.push(prompt);
         Ok(())
     }
 
@@ -2847,7 +2847,7 @@ where
 
         if first_statement_opt.is_none() {
             // File is empty
-            self.context.prompts.push(Linter::Message(
+            self.context.linters.push(Linter::Message(
                 LintLevel::Warn,
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
@@ -2920,7 +2920,7 @@ where
                 // The include guard macro name matches the suggested name.
 
                 // Suggest using `#pragma once`:
-                self.context.prompts.push(Linter::Message(
+                self.context.linters.push(Linter::Message(
                     LintLevel::Info,
                     file_number_of_header_file,
                     "Consider adding additional `#pragma once` for better practice.".to_owned(),
@@ -2929,7 +2929,7 @@ where
                 // The include guard macro name does not match the suggested name.
                 // Suggest renaming the include guard macro to follow the convention, which
                 // prevents potential conflicts with other macros.
-                self.context.prompts.push(Linter::MessageWithRange(
+                self.context.linters.push(Linter::MessageWithRange(
                     LintLevel::Info,
                     file_number_of_header_file,
                     format!(
@@ -2942,7 +2942,7 @@ where
         } else {
             // The file does not have an include guard or `#pragma once`.
             // We suggest adding `#pragma once`.
-            self.context.prompts.push(Linter::Message(
+            self.context.linters.push(Linter::Message(
                 LintLevel::Warn,
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
@@ -3355,7 +3355,7 @@ mod tests {
         processor::{PreprocessResult, process_source_file},
         range::Range,
         token::{
-            C23_KEYWORDS, IntegerNumber, IntegerNumberWidth, Number, Punctuator, Token,
+            C23_KEYWORD_STRS, IntegerNumber, IntegerNumberWidth, Number, Punctuator, Token,
             TokenWithLocation,
         },
     };
@@ -3372,7 +3372,7 @@ mod tests {
         process_source_file(
             &file_provider,
             &mut file_cache,
-            &C23_KEYWORDS,
+            &C23_KEYWORD_STRS,
             predefinitions,
             false,
             false,
@@ -3404,7 +3404,7 @@ mod tests {
         process_source_file(
             &file_provider,
             &mut file_cache,
-            &C23_KEYWORDS,
+            &C23_KEYWORD_STRS,
             predefinitions,
             false,
             true,
@@ -3453,7 +3453,7 @@ mod tests {
         process_source_file(
             &file_provider,
             &mut file_cache,
-            &C23_KEYWORDS,
+            &C23_KEYWORD_STRS,
             &predefinitions,
             false,
             false,

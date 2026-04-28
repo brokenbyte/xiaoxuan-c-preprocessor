@@ -8,20 +8,20 @@ mod char_with_position;
 mod expression;
 mod initializer;
 mod lexer;
-mod location;
 mod parser;
-mod peekable_iter;
-mod position;
 mod processor;
-mod range;
 
 pub mod ast;
 pub mod ast_printer;
 pub mod context;
 pub mod error;
 pub mod linter;
+pub mod location;
 pub mod memory_file_provider;
 pub mod native_file_provider;
+pub mod peekable_iter;
+pub mod position;
+pub mod range;
 pub mod source_message;
 pub mod token;
 

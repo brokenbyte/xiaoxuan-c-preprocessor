@@ -596,7 +596,7 @@ impl Display for Punctuator {
 // but excludes any keywords that have been deprecated or removed in C23.
 // It is used to prevent keywords from being used as macro names in the preprocessor.
 // Reference: https://en.cppreference.com/w/c/keyword.html
-pub const C23_KEYWORDS: [&str; 53] = [
+pub const C23_KEYWORD_STRS: [&str; 53] = [
     "alignas",
     "alignof",
     "auto",
@@ -651,6 +651,63 @@ pub const C23_KEYWORDS: [&str; 53] = [
     "_Generic",
     "_Imaginary",
 ];
+
+#[repr(usize)]
+pub enum C23Keyword {
+    Alignas,
+    Alignof,
+    Auto,
+    Bool,
+    Break,
+    Case,
+    Char,
+    Const,
+    Constexpr,
+    Continue,
+    Default,
+    Do,
+    Double,
+    Else,
+    Enum,
+    Extern,
+    Float,
+    False,
+    For,
+    Goto,
+    If,
+    Inline,
+    Int,
+    Long,
+    Nullptr,
+    Register,
+    Restrict,
+    Return,
+    Short,
+    Signed,
+    Sizeof,
+    Static,
+    StaticAssert,
+    Struct,
+    Switch,
+    ThreadLocal,
+    True,
+    Typedef,
+    Typeof,
+    TypeofUnqual,
+    Union,
+    Unsigned,
+    Void,
+    Volatile,
+    While,
+    Atomic,
+    BitInt,
+    Complex,
+    Decimal128,
+    Decimal32,
+    Decimal64,
+    Generic,
+    Imaginary,
+}
 
 #[cfg(test)]
 mod tests {

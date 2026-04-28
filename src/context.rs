@@ -34,7 +34,7 @@ where
 
     /// Identifiers which are used to prevent defining macros with these names.
     /// They are usually C keywords, such as `int`, `return`, `if`, `else`, etc.
-    /// You may simply use `token::C23_KEYWORDS`.
+    /// You may simply use `token::C23_KEYWORD_STRS`.
     pub reserved_identifiers: &'a [&'a str],
 
     /// Macro definitions and related state.
@@ -79,7 +79,7 @@ where
     pub included_files: Vec<FileLocation>,
 
     /// User-facing messages, warnings, or information.
-    pub prompts: Vec<Linter>,
+    pub linters: Vec<Linter>,
 
     /// Output tokens generated during preprocessing.
     pub output: Vec<TokenWithLocation>,
@@ -116,7 +116,7 @@ where
             current_file_item,
             macro_map: MacroMap::new(),
             included_files: Vec::new(),
-            prompts: Vec::new(),
+            linters: Vec::new(),
             output: Vec::new(),
         }
     }
@@ -148,7 +148,7 @@ where
             enable_single_argument_multiple_tokens,
             current_file_item,
             included_files: Vec::new(),
-            prompts: Vec::new(),
+            linters: Vec::new(),
             output: Vec::new(),
         })
     }

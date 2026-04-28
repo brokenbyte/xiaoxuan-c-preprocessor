@@ -14,7 +14,7 @@ use ancpp::{
     error::PreprocessFileError,
     native_file_provider::NativeFileProvider,
     process_source_file,
-    token::{C23_KEYWORDS, TokenWithLocation},
+    token::{C23_KEYWORD_STRS, TokenWithLocation},
 };
 
 /// Helpers to get the path to the test resources rootfs directory.
@@ -70,7 +70,7 @@ fn process_single_source_file(
     process_source_file(
         &file_provider,
         &mut file_cache,
-        &C23_KEYWORDS,
+        &C23_KEYWORD_STRS,
         predefinitions,
         false,
         false,

@@ -4,7 +4,7 @@
 // the Mozilla Public License version 2.0 and additional exceptions.
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
-pub const ROUND_QUEUE_LENGTH: usize = 8;
+pub const ROUND_QUEUE_LENGTH: usize = 32;
 
 /// `PeekableIter` extends the functionality of `std::iter::Peekable` by allowing
 /// peeking at elements at any specified offset, not just the next one.

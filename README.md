@@ -138,7 +138,7 @@ let source_file_full_path = Path::new("/path/to/my/c/project/src/main.c");
 let result = process_source_file(
         file_provider,
         file_cache,
-        &ancpp::token::C23_KEYWORDS,
+        &ancpp::token::C23_KEYWORD_STRS,
         predefinitions,
         resolve_relative_path_within_current_file,
         enable_single_argument_multiple_tokens,
@@ -157,7 +157,7 @@ let source_file_full_path = Path::new("/path/to/my/c/project/src/utils.c");
 let result = process_source_file(
         file_provider,
         file_cache,
-        &ancpp::token::C23_KEYWORDS,
+        &ancpp::token::C23_KEYWORD_STRS,
         predefinitions,
         resolve_relative_path_within_current_file,
         source_file_number,
@@ -350,7 +350,7 @@ You can not define macros with name `defined`, which is a special operator in co
 
 The ANCPP function `process_source_file` accepts an argument `reserved_identifiers`, which is a set of identifiers that you want to reserve and prevent users from defining them as macros.
 
-By default ANCC pass the `ancpp::token::C23_KEYWORDS` constant to reserve all C23 keywords, this helps avoid accidental macro definitions that conflict with C language keywords.
+By default ANCC pass the `ancpp::token::C23_KEYWORD_STRS` constant to reserve all C23 keywords, this helps avoid accidental macro definitions that conflict with C language keywords.
 
 **Macros that haven't been defined**
 
