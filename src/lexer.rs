@@ -194,7 +194,7 @@ impl Lexer<'_> {
                             Token::_DirectiveEnd,
                             Range::new(&self.pop_position_from_stack(), &self.last_position),
                         ));
-                    }else {
+                    } else {
                         self.pop_position_from_stack(); // discard the position
                     }
 
@@ -1030,10 +1030,28 @@ impl Lexer<'_> {
         // unicode normalization
         let identifier_normalized: String = identifier_buffer.nfc().collect();
 
-        Ok(TokenWithRange::new(
-            Token::Identifier(identifier_normalized),
-            identifier_range,
-        ))
+        if let Some(pos) = identifier_normalized.find("::") {
+            // NamespaceIdentifier
+            let (ns, id) = identifier_normalized.split_at(pos);
+            let id = &id[2..]; // skip '::'
+
+            if id.is_empty() {
+                return Err(PreprocessError::MessageWithRange(
+                    "Incomplete namespace identifier.".to_owned(),
+                    identifier_range.clone(),
+                ));
+            }
+
+            Ok(TokenWithRange::new(
+                Token::NamespaceIdentifier(ns.to_owned(), id.to_owned()),
+                identifier_range,
+            ))
+        } else {
+            Ok(TokenWithRange::new(
+                Token::Identifier(identifier_normalized),
+                identifier_range,
+            ))
+        }
     }
 
     fn lex_decimal_number(&mut self, leading_dot: bool) -> Result<TokenWithRange, PreprocessError> {
@@ -4767,7 +4785,10 @@ mod tests {
         // contains double colons "::"
         assert_eq!(
             lex_from_str_with_range_strip("foo::bar").unwrap(),
-            vec![Token::new_identifier("foo::bar")]
+            vec![Token::NamespaceIdentifier(
+                "foo".to_owned(),
+                "bar".to_owned()
+            )]
         );
 
         // contains unicode
@@ -4805,6 +4826,26 @@ mod tests {
                     index: 1,
                     line: 0,
                     column: 1,
+                }
+            ))
+        ));
+
+        // Error: incomplete namespace identifier
+        assert!(matches!(
+            lex_from_str_with_range_strip("abc::"),
+            Err(PreprocessError::MessageWithRange(
+                _,
+                Range {
+                    start: Position {
+                        index: 0,
+                        line: 0,
+                        column: 0,
+                    },
+                    end_inclusive: Position {
+                        index: 4,
+                        line: 0,
+                        column: 4,
+                    }
                 }
             ))
         ));
