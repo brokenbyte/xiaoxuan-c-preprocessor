@@ -1038,7 +1038,7 @@ impl Lexer<'_> {
             if id.is_empty() {
                 return Err(PreprocessError::MessageWithRange(
                     "Incomplete namespace identifier.".to_owned(),
-                    identifier_range.clone(),
+                    identifier_range,
                 ));
             }
 

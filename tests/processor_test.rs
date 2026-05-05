@@ -4,7 +4,11 @@
 // the Mozilla Public License version 2.0 and additional exceptions.
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
-use std::{collections::HashMap, env, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    path::PathBuf,
+};
 
 use pretty_assertions::assert_eq;
 
@@ -71,9 +75,9 @@ fn process_single_source_file(
         &file_provider,
         &mut file_cache,
         &C23_KEYWORD_STRS,
+        &HashMap::new(),
+        &HashSet::new(),
         predefinitions,
-        false,
-        false,
         FILE_NUMBER_SOURCE_FILE_BEGIN,
         &source_file_path,
         &source_file_canonical_full_path,

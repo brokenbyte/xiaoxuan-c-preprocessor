@@ -594,10 +594,21 @@ impl Display for Punctuator {
 }
 
 // C23 keywords
+// It is used to prevent keywords from being used as macro names in the preprocessor.
+//
 // This list contains all C keywords, including those introduced in C23,
 // but excludes any keywords that have been deprecated or removed in C23.
-// It is used to prevent keywords from being used as macro names in the preprocessor.
-// Reference: https://en.cppreference.com/w/c/keyword.html
+//
+// - `_Alignas` (C11)(deprecated in C23) -> `alignas` (C23)
+// - `_Alignof` (C11)(deprecated in C23) -> `alignof` (C23)
+// - `_Bool` (C99)(deprecated in C23) -> `bool` (C23)
+// - `_Static_assert` (C11)(deprecated in C23) -> `static_assert` (C23)
+// - `_Thread_local` (C11)(deprecated in C23) -> `thread_local` (C23)
+// - `_Noreturn` (C11)(deprecated in C23)
+//
+// Reference:
+// - https://cppreference.com/c/keyword
+// - https://en.cppreference.com/w/c/keyword.html
 pub const C23_KEYWORD_STRS: [&str; 53] = [
     /* storage class specifier */
     "typedef",
@@ -605,7 +616,7 @@ pub const C23_KEYWORD_STRS: [&str; 53] = [
     "static",
     "thread_local",
     "auto",
-    "register", // deprecated in C23, but still a keyword
+    "register",
     "constexpr",
     /* type specifier */
     "void",
@@ -634,7 +645,7 @@ pub const C23_KEYWORD_STRS: [&str; 53] = [
     "const",
     "restrict",
     "volatile",
-    /* function specifier, `_Noreturn` is deprecated in C23 */
+    /* function specifier */
     "inline",
     /* alignment specifier */
     "alignas",
@@ -668,7 +679,7 @@ pub enum C23Keyword {
     Static,
     ThreadLocal,
     Auto,
-    Register, // deprecated in C23, but still a keyword
+    Register,
     Constexpr,
     /* type specifier */
     Void,
@@ -697,7 +708,7 @@ pub enum C23Keyword {
     Const,
     Restrict,
     Volatile,
-    /* function specifier, `_Noreturn` is deprecated in C23 */
+    /* function specifier */
     Inline,
     /* alignment specifier */
     Alignas,

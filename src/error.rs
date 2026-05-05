@@ -21,14 +21,6 @@ pub enum PreprocessError {
     MessageWithRange(String, Range),
 }
 
-// impl Display for PreprocessError {
-//     fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
-//         unimplemented!()
-//     }
-// }
-
-// impl std::error::Error for PreprocessError {}
-
 #[derive(Debug, PartialEq)]
 pub struct PreprocessFileError {
     pub file_number: usize,
@@ -41,14 +33,6 @@ impl PreprocessFileError {
     }
 }
 
-// impl Display for PreprocessFileError {
-//     fn fmt(&self, _f: &mut std::fmt::Formatter) -> std::fmt::Result {
-//         unimplemented!()
-//     }
-// }
-
-// impl std::error::Error for PreprocessFileError {}
-
 impl PreprocessFileError {
     pub fn source_message(
         &self,
@@ -59,13 +43,13 @@ impl PreprocessFileError {
             PreprocessError::Message(msg) => {
                 let title = format!("Error: {}", msg);
                 let file = format!("File: {}", source_file_canonical_full_path);
-                format!("{}\n{}", title, file)
+                format!("{}\n{}\n", title, file)
             }
             PreprocessError::UnexpectedEndOfDocument(msg) => {
                 let title = "Error:".to_owned();
                 let message = attach_with_snippet_by_last_position(source_text_content, msg);
                 let file = format!("File: {}", source_file_canonical_full_path);
-                format!("{}\n{}\n{}", title, message, file)
+                format!("{}\n{}\n{}\n", title, message, file)
             }
             PreprocessError::MessageWithPosition(msg, position) => {
                 let title = "Error:".to_owned();
@@ -78,7 +62,7 @@ impl PreprocessFileError {
                     position.column + 1
                 );
 
-                format!("{}\n{}\n{}\n{}", title, message, location, file)
+                format!("{}\n{}\n{}\n{}\n", title, message, location, file)
             }
             PreprocessError::MessageWithRange(msg, range) => {
                 let title = "Error:".to_owned();
@@ -94,7 +78,7 @@ impl PreprocessFileError {
                     range.start.line + 1,
                     range.start.column + 1,
                 );
-                format!("{}\n{}\n{}\n{}", title, message, location, file)
+                format!("{}\n{}\n{}\n{}\n", title, message, location, file)
             }
         }
     }

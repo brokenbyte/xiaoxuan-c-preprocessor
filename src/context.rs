@@ -5,7 +5,7 @@
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Component, Path, PathBuf},
 };
 
@@ -20,7 +20,8 @@ use crate::{
 };
 
 /// The `Context` struct holds all state required during preprocessing.
-/// It manages file access, macro definitions, file inclusion tracking, and prompt messages.
+/// It manages file access, macro definitions, file inclusion tracking,
+/// and linter messages.
 pub struct Context<'a, T>
 where
     T: FileProvider,
@@ -37,38 +38,11 @@ where
     /// You may simply use `token::C23_KEYWORD_STRS`.
     pub reserved_identifiers: &'a [&'a str],
 
+    pub compile_features: &'a HashMap<String, bool>,
+    pub suppress_linters: &'a HashSet<String>,
+
     /// Macro definitions and related state.
     pub macro_map: MacroMap,
-
-    /// A flag to control whether to resolve relative paths within the current source file.
-    ///
-    /// Set to true to resolve relative paths to the source file,
-    /// otherwise, preprocessor will only search in the specified including directories.
-    ///
-    /// For example, consider there are 3 defined include directories:
-    ///
-    /// - `./include`
-    /// - `./src/headers`
-    /// - `/usr/include`
-    ///
-    /// The statement `#include "foo.h"` in the source file `src/main.c` will try to
-    /// match `foo.h` in the following order:
-    ///
-    /// - `./include/foo.h`
-    /// - `./src/headers/foo.h`
-    /// - `/usr/include/foo.h`
-    ///
-    /// If `resolve_relative_path_within_current_file` is true, then it will also
-    /// try to match `src/foo.h`.
-    pub resolve_relative_path_within_current_file: bool,
-
-    // A flag that controls whether function-like macro arguments may consist of multiple tokens.
-    //
-    // When false (the default), ANCPP requires each macro argument to be a single token
-    // (identifier, number, string literal, or character literal). When true, an argument
-    // may be an arbitrary sequence of tokens, allowing more complex expressions to be
-    // passed as a single parameter.
-    pub enable_single_argument_multiple_tokens: bool,
 
     /// The file number currently being processed.
     pub current_file_item: FileItem,
@@ -95,8 +69,10 @@ where
         file_provider: &'a T,
         file_cache: &'a mut HeaderFileCache,
         reserved_identifiers: &'a [&'a str],
-        resolve_relative_path_within_current_file: bool,
-        enable_single_argument_multiple_tokens: bool,
+        // enable_include_file_path_relative_to_current_file: bool,
+        // enable_macro_single_argument_multiple_tokens: bool,
+        compile_features: &'a HashMap<String, bool>,
+        suppress_linters: &'a HashSet<String>,
         current_file_number: usize,
         current_file_relative_path: &Path,
         current_file_canonical_full_path: &Path,
@@ -111,8 +87,8 @@ where
             file_provider,
             header_file_cache: file_cache,
             reserved_identifiers,
-            resolve_relative_path_within_current_file,
-            enable_single_argument_multiple_tokens,
+            compile_features,
+            suppress_linters,
             current_file_item,
             macro_map: MacroMap::new(),
             included_files: Vec::new(),
@@ -126,9 +102,9 @@ where
         file_provider: &'a T,
         file_cache: &'a mut HeaderFileCache,
         reserved_identifiers: &'a [&'a str],
+        compile_features: &'a HashMap<String, bool>,
+        suppress_linters: &'a HashSet<String>,
         predefinitions: &HashMap<String, String>,
-        resolve_relative_path_within_current_file: bool,
-        enable_single_argument_multiple_tokens: bool,
         current_file_number: usize,
         current_file_relative_path: &Path,
         current_file_canonical_full_path: &Path,
@@ -143,9 +119,9 @@ where
             file_provider,
             header_file_cache: file_cache,
             reserved_identifiers,
+            compile_features,
+            suppress_linters,
             macro_map: MacroMap::from_key_values(predefinitions)?,
-            resolve_relative_path_within_current_file,
-            enable_single_argument_multiple_tokens,
             current_file_item,
             included_files: Vec::new(),
             linters: Vec::new(),
@@ -158,6 +134,20 @@ where
             .iter()
             .any(|file| file.canonical_full_path == canonical_full_path)
     }
+
+    pub fn is_compile_feature_enabled(&self, feature_name: &str) -> bool {
+        // The absent of a feature in this set is equivalent to the feature being set to false.
+        self.compile_features
+            .get(feature_name)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    pub fn is_linter_suppressed(&self, linter_name: &str) -> bool {
+        // The set of linters to be suppressed during preprocessing.
+        self.suppress_linters.contains(linter_name)
+    }
+
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -279,9 +269,9 @@ pub trait FileProvider {
         &self,
         target_file_relative_path: &Path,
         source_file_canonical_full_path: &Path,
-        resolve_relative_path_within_current_file: bool,
+        enable_include_file_path_relative_to_current_file: bool,
     ) -> Option<FilePathResolveResult> {
-        if resolve_relative_path_within_current_file
+        if enable_include_file_path_relative_to_current_file
             && let Some(resolved_path) = self.resolve_user_file_relative_to_current_file(
                 target_file_relative_path,
                 source_file_canonical_full_path,

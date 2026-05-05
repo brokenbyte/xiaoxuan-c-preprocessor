@@ -10,6 +10,10 @@ ANCPP is provided primarily as a library for the ANCC project (XiaoXuan C Compil
 
 - [1. Features](#1-features)
 - [2. Usage](#2-usage)
+  - [2.1 Compile features](#21-compile-features)
+    - [2.1.1 `resolve_header_file_relative_to_current_file`](#211-resolve_header_file_relative_to_current_file)
+    - [2.1.2 `macro_invocation_single_argument_multiple_tokens`](#212-macro_invocation_single_argument_multiple_tokens)
+  - [2.2 Suppress linters](#22-suppress-linters)
 - [3. How preprocessor works](#3-how-preprocessor-works)
   - [3.1 Macro definition (`#define`)](#31-macro-definition-define)
   - [3.2 Undefined macros (`#undef`)](#32-undefined-macros-undef)
@@ -76,34 +80,11 @@ let file_provider = NativeFileProvider::new(&user_include_dirs, &system_include_
 // to speed up preprocessing when handling multiple source files.
 let mut file_cache = HeaderFileCache::new();
 
-// A flag to control whether to resolve relative paths within the current source file.
-//
-// Set to true to resolve relative paths to the source file,
-// otherwise, preprocessor will only search in the specified including directories.
-//
-// For example, consider there are 3 defined include directories:
-//
-// - `./include`
-// - `./src/headers`
-// - `/usr/include`
-//
-// The statement `#include "foo.h"` in the source file `src/main.c` will try to
-// match `foo.h` in the following order:
-//
-// - `./include/foo.h`
-// - `./src/headers/foo.h`
-// - `/usr/include/foo.h`
-//
-// If `resolve_relative_path_within_current_file` is true, then it will also
-// try to match `src/foo.h`.
-let resolve_relative_path_within_current_file = false;
+// Compile features
+let mut compile_features = HashMap<String, bool>::new();
 
-
-// By default, ANCPP requires each macro invocation argument to be a single token
-// (identifier, number, string literal, character literal, or punctuator). When true, an argument
-// may be an arbitrary sequence of tokens, allowing more complex expressions to be
-// passed as a single parameter.
-let enable_single_argument_multiple_tokens = false;
+// Suppress specific linter messages
+let mut suppress_linters = HashSet::new();
 
 // Add the predefined macros you need
 let mut predefinitions = HashMap::new();
@@ -139,9 +120,9 @@ let result = process_source_file(
         file_provider,
         file_cache,
         &ancpp::token::C23_KEYWORD_STRS,
-        predefinitions,
-        resolve_relative_path_within_current_file,
-        enable_single_argument_multiple_tokens,
+        &compile_features,
+        &suppress_linters,
+        &predefinitions,
         source_file_number,
         source_file_path_name,
         source_file_full_path,
@@ -151,6 +132,7 @@ let result = process_source_file(
 println!("{:?}", result);
 
 // Process another source file
+// Only the file number, path name, and full path need to be changed, the other parameters can be reused.
 let source_file_number = FILE_NUMBER_SOURCE_FILE_BEGIN + 2;
 let source_file_path_name = Path::new("src/utils.c");
 let source_file_full_path = Path::new("/path/to/my/c/project/src/utils.c");
@@ -158,8 +140,9 @@ let result = process_source_file(
         file_provider,
         file_cache,
         &ancpp::token::C23_KEYWORD_STRS,
-        predefinitions,
-        resolve_relative_path_within_current_file,
+        &compile_features,
+        &suppress_linters,
+        &predefinitions,
         source_file_number,
         source_file_path_name,
         source_file_full_path,
@@ -168,13 +151,51 @@ let result = process_source_file(
 println!("{:?}", result);
 ```
 
-The function `process_source_file` is the main API provided by ANCPP. It takes a `FileProvider`, a `HeaderFileCache`, a map of predefined macros, and several parameters related to the source file, and returns the preprocessed result as a `Result<PreprocessResult, PreprocessorError>`. A `PreprocessResult` contains a vector of `TokenWithLocation` (the preprocessed tokens, ready for consumption by the AST parser of compilers) and a vector of `Prompt` (warnings and hints generated during preprocessing).
-
-By default, ANCPP only resolves header and resource files located in the user and system directories specified in the `FileProvider`, this strategy improves consistency and security. For example, if your source file `src/main.c` contains a statement `#include "./header.h"`, ANCPP will search for `header.h` in the user including directories (such as `include`, `src/header` directories under the project root), and the system including directories (e.g., `/usr/include`). It will not search other directories (e.g. the project's source code folder `src/`) unless you enable the parameter `resolve_relative_path_within_current_file`. Most C compilers, such as GCC and Clang (LLVM), resolve relative paths which is related to the current file being compiled. To match this behavior, set the `resolve_relative_path_within_current_file` parameter to `true`.
+The function `process_source_file` is the main API provided by ANCPP. It takes a `FileProvider`, a `HeaderFileCache`, a map of predefined macros, compile features, and suppress linters. It returns the result as a `Result<PreprocessResult, PreprocessorError>`. A `PreprocessResult` contains a vector of `TokenWithLocation` (the preprocessed tokens, ready for consumption by the parser of compilers) and a vector of `Linter` (warnings and hints generated during preprocessing).
 
 In a typical C project with multiple source and header files, preprocessing may produce errors or warnings, each associated with a specific source file number (as well as line and column). ANCPP automatically assigns file numbers to header files, starting from 1 (file number 0 is reserved for predefined macros). The source file number should be specified manually using the `source_file_number` parameter. To avoid conflicts with header files, the source file number should be greater than or equal to `FILE_NUMBER_SOURCE_FILE_BEGIN`, which is defined as 65536 in ANCPP.
 
 The loaded header file list can be obtained by calling the `get_cache_file_list` method on the `HeaderFileCache`. This list contains all header files that were successfully loaded during preprocessing, along with their file numbers and paths.
+
+### 2.1 Compile features
+
+There are some compile features that can be enabled or disabled to control the behavior of the preprocessor.
+
+#### 2.1.1 `resolve_header_file_relative_to_current_file`
+
+This flag controls whether to resolve file paths that are relative to the current file.
+
+By default, ANCPP only resolves header and resource files located in the user and system directories specified in the `FileProvider`, this strategy improves consistency and security.
+
+For example, consider there are 3 defined include directories:
+
+- `./include`
+- `./src/headers`
+- `/usr/include`
+
+The statement `#include "foo.h"` in the source file `src/main.c` will try to match `foo.h` in the following order:
+
+- `./include/foo.h`
+- `./src/headers/foo.h`
+- `/usr/include/foo.h`
+
+If this flag is set to `true`, then it will also try to match `src/foo.h`, which is relative to the current file `src/main.c`.
+
+Most C compilers, such as GCC and Clang (LLVM), resolve relative paths which is related to the current file being compiled. If you want to match this behavior, set this flag to `true`.
+
+#### 2.1.2 `macro_invocation_single_argument_multiple_tokens`
+
+By default, ANCPP requires each macro invocation argument to be a single token (identifier, number, string literal, character literal, or punctuator). If this flag is set to `true`, an argument may be an arbitrary sequence of tokens, allowing more complex expressions to be passed as a single parameter, but it may lead to unexpected behaviors, especially when the arguments have side effects or involve complex expressions. It is recommended to keep this flag disabled.
+
+### 2.2 Suppress linters
+
+ANCPP provides a built-in linters to report potential issues and suggestions during preprocessing. Each linter message has a unique identifier, and you can suppress specific linters by adding their identifiers to the `suppress_linters` set.
+
+- `directive_warn`: Message that generated by the directive `warn`.
+- `pragma_once_absent`: A header file does not have `#pragma once` or include guard.
+- `prefer_pragma_once`: A header file has an include guard, but it is recommended to use `#pragma once` for better practice.
+- `unconventional_include_guard`: The include guard macro name does not follow the convention of being in uppercase and ending with `FILE_NAME_H`.
+- `macro_invocation_single_argument_multiple_tokens`: A macro invocation argument contains multiple tokens, which may lead to unexpected behaviors.
 
 ## 3. How preprocessor works
 
@@ -609,7 +630,7 @@ int min_value = MIN(MIN(a,b), c);       // Disallowed: Argument "MIN(a,b)" is an
 
 This constraint significantly weakens the flexibility of function-like macros, but it ensures that function-like macro arguments are simple and predictable.
 
-If mulitple tokens are needed in an argument, you can enable the `enable_single_argument_multiple_tokens` flag in the `Processor` to allow it.
+If mulitple tokens are needed in an argument, you can enable the `enable_macro_single_argument_multiple_tokens` flag in the `Processor` to allow it.
 
 > If something the C functions can do, prefer using C functions (inline functions if necessary) instead of function-like macros. Function-like macros should be used only in "static code generation" scenarios.
 
@@ -1303,7 +1324,7 @@ The difference between the two forms is the way the preprocessor searches for th
 - `#include <FILE_PATH>`: The preprocessor searches for the file in the system include directories (which are defined by the compiler) and user-specified include directories (which are specified by user via compiler command-line options).
 - `#include "FILE_PATH"`: The preprocessor first searches for the relative file path in the same directory as the source file. If the file is not found there, it then searches in the system include directories and user-specified include directories.
 
-In ANCPP, the system include directories and user-specified include directories are configured via the `FileProvider` interface passed to the `process_source_file(...)` function. By default when ANCPP handle `#include "FILE_PATH"` form, it wouldn't search the relative file path in the same directory as the current source file, it searches in user-specified include directories directly and then system include directories, this strategy improves consistency and security. To enable searching relative file path, you need to pass `true` to the `resolve_relative_path_within_current_file` parameter of `process_source_file(...)` function.
+In ANCPP, the system include directories and user-specified include directories are configured via the `FileProvider` interface passed to the `process_source_file(...)` function. By default when ANCPP handle `#include "FILE_PATH"` form, it wouldn't search the relative file path in the same directory as the current source file, it searches in user-specified include directories directly and then system include directories, this strategy improves consistency and security. To enable searching relative file path, you need to pass `true` to the `enable_include_file_path_relative_to_current_file` parameter of `process_source_file(...)` function.
 
 **The limitations of `FILE_PATH`**
 

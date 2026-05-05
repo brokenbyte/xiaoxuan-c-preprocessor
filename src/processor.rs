@@ -5,7 +5,7 @@
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     vec,
 };
@@ -20,7 +20,12 @@ use crate::{
     },
     error::{PreprocessError, PreprocessFileError},
     expression::evaluate,
-    linter::{LintLevel, Linter},
+    linter::{
+        LINTER_SUPPRESS_DIRECTIVE_WARN,
+        LINTER_SUPPRESS_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS,
+        LINTER_SUPPRESS_PRAGMA_ONCE_ABSENT, LINTER_SUPPRESS_PREFER_PRAGMA_ONCE,
+        LINTER_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD, LintLevel, Linter,
+    },
     location::Location,
     parser::parse_from_str,
     peekable_iter::PeekableIter,
@@ -30,6 +35,44 @@ use crate::{
         TokenWithLocation, TokenWithRange,
     },
 };
+
+// This flag controls whether to resolve file paths that are relative to the current file.
+//
+// By default, ANCPP only resolves header and resource files located in the user and
+// system directories specified in the `FileProvider`, this strategy improves
+// consistency and security.
+//
+// For example, consider there are 3 defined include directories:
+//
+// - `./include`
+// - `./src/headers`
+// - `/usr/include`
+//
+// The statement `#include "foo.h"` in the source file `src/main.c` will try to
+// match `foo.h` in the following order:
+//
+// - `./include/foo.h`
+// - `./src/headers/foo.h`
+// - `/usr/include/foo.h`
+//
+// If this flag is set to `true`, then it will also try to match `src/foo.h`,
+// which is relative to the current file `src/main.c`.
+//
+// Most C compilers, such as GCC and Clang (LLVM), resolve relative paths which is
+// related to the current file being compiled. If you want to match this behavior,
+// set this flag to `true`.
+pub const COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE: &str =
+    "resolve_header_file_relative_to_current_file";
+
+// By default, ANCPP requires each macro invocation argument to be a single token
+// (identifier, number, string literal, character literal, or punctuator).
+// If this flag is set to `true`, an argument may be an arbitrary sequence of tokens,
+// allowing more complex expressions to be passed as a single parameter,
+// but it may lead to unexpected behaviors, especially when the arguments
+// have side effects or involve complex expressions.
+// It is recommended to keep this flag disabled.
+pub const COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS: &str =
+    "macro_invocation_single_argument_multiple_tokens";
 
 /// Extra operators supported in conditional directives.
 ///
@@ -67,6 +110,27 @@ pub fn process_source_file<T>(
     // You may simply use `token::C23_KEYWORD_STRS`.
     reserved_identifiers: &[&str],
 
+    // The compile-time features to be used during preprocessing.
+    //
+    // The supported features include:
+    // - `resolve_header_file_relative_to_current_file`
+    // - `macro_invocation_single_argument_multiple_tokens`
+    //
+    // The absent of a feature in this set is equivalent to the feature being set to false.
+    compile_features: &HashMap<String, bool>,
+
+    // The set of linters to be suppressed during preprocessing.
+    //
+    // The supported linters include:
+    // - `warn_directive`
+    // - `include_guard_not_found`
+    // - `prefer_pragma_once`
+    // - `unconventional_include_guard`
+    //
+    // The absent of a linter in this set means the linter is not suppressed
+    // and will be reported to the user if triggered.
+    suppress_linters: &HashSet<String>,
+
     // The predefined macros to be used during preprocessing.
     // Such as `__STDC__` and `__STDC_VERSION__` which are provided by the compiler.
     // Note that some macros like `__FILE__`, `__LINE__`, `__DATE__`, and `__TIME__`
@@ -76,36 +140,6 @@ pub fn process_source_file<T>(
     // - https://gcc.gnu.org/onlinedocs/cpp/Standard-Predefined-Macros.html
     // - https://en.cppreference.com/w/c/preprocessor/replace.html
     predefinitions: &HashMap<String, String>,
-
-    // A flag to control whether to resolve relative paths within the current source file.
-    //
-    // Set to true to resolve relative paths to the source file,
-    // otherwise, preprocessor will only search in the specified including directories.
-    //
-    // For example, consider there are 3 defined include directories:
-    //
-    // - `./include`
-    // - `./src/headers`
-    // - `/usr/include`
-    //
-    // The statement `#include "foo.h"` in the source file `src/main.c` will try to
-    // match `foo.h` in the following order:
-    //
-    // - `./include/foo.h`
-    // - `./src/headers/foo.h`
-    // - `/usr/include/foo.h`
-    //
-    // If `resolve_relative_path_within_current_file` is true, then it will also
-    // try to match `src/foo.h`.
-    resolve_relative_path_within_current_file: bool,
-
-    // A flag that controls whether function-like macro arguments may consist of multiple tokens.
-    //
-    // When false (the default), ANCPP requires each macro argument to be a single token
-    // (identifier, number, string literal, or character literal). When true, an argument
-    // may be an arbitrary sequence of tokens, allowing more complex expressions to be
-    // passed as a single parameter.
-    enable_single_argument_multiple_tokens: bool,
 
     // The number of the source file, used for error reporting.
     // It should begin with `FILE_NUMBER_SOURCE_FILE_BEGIN` (which default to 65536)
@@ -131,9 +165,9 @@ where
         file_provider,
         header_file_cache,
         reserved_identifiers,
+        compile_features,
+        suppress_linters,
         predefinitions,
-        resolve_relative_path_within_current_file,
-        enable_single_argument_multiple_tokens,
         source_file_number,
         source_file_path_name,
         source_file_canonical_full_path,
@@ -200,9 +234,9 @@ where
         file_provider: &'a T,
         file_cache: &'a mut HeaderFileCache,
         reserved_identifiers: &'a [&'a str],
+        compile_features: &'a HashMap<String, bool>,
+        suppress_linters: &'a HashSet<String>,
         predefinitions: &HashMap<String, String>,
-        resolve_relative_path_within_current_file: bool,
-        enable_single_argument_multiple_tokens: bool,
         source_file_number: usize,
         source_file_path_name: &Path,
         source_file_canonical_full_path: &Path,
@@ -211,9 +245,9 @@ where
             file_provider,
             file_cache,
             reserved_identifiers,
+            compile_features,
+            suppress_linters,
             predefinitions,
-            resolve_relative_path_within_current_file,
-            enable_single_argument_multiple_tokens,
             source_file_number,
             source_file_path_name,
             source_file_canonical_full_path,
@@ -436,20 +470,35 @@ where
             match self.context.file_provider.resolve_user_file_with_fallback(
                 &include_resolve_result.file_path,
                 &self.context.current_file_item.location.canonical_full_path,
-                self.context.resolve_relative_path_within_current_file,
+                self.context.is_compile_feature_enabled(
+                    COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE,
+                ),
             ) {
                 Some(FilePathResolveResult {
                     canonical_full_path,
                     is_system_file,
                 }) => (canonical_full_path, is_system_file),
                 None => {
+                    let msg = if self.context.is_compile_feature_enabled(
+                        COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE,
+                    ) {
+                        format!(
+                            "Header file '{}' not found.",
+                            include_resolve_result.file_path.to_string_lossy()
+                        )
+                    } else {
+                        format!(
+                            "Header file '{}' not found, turn on the compile feature '{}' \
+                                if you want to search for the header file in the same directory as the current file.",
+                            include_resolve_result.file_path.to_string_lossy(),
+                            COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE
+                        )
+                    };
+
                     return Err(PreprocessFileError::new(
                         include_resolve_result.file_path_location.file_number,
                         PreprocessError::MessageWithRange(
-                            format!(
-                                "Header file '{}' not found.",
-                                include_resolve_result.file_path.to_string_lossy()
-                            ),
+                            msg,
                             include_resolve_result.file_path_location.range,
                         ),
                     ));
@@ -610,20 +659,35 @@ where
             match self.context.file_provider.resolve_user_file_with_fallback(
                 &embed_resolve_result.file_path,
                 &self.context.current_file_item.location.canonical_full_path,
-                self.context.resolve_relative_path_within_current_file,
+                self.context.is_compile_feature_enabled(
+                    COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE,
+                ),
             ) {
                 Some(FilePathResolveResult {
                     canonical_full_path,
                     is_system_file,
                 }) => (canonical_full_path, is_system_file),
                 None => {
+                    let msg = if self.context.is_compile_feature_enabled(
+                        COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE,
+                    ) {
+                        format!(
+                            "Binary file '{}' not found.",
+                            embed_resolve_result.file_path.to_string_lossy()
+                        )
+                    } else {
+                        format!(
+                            "Binary file '{}' not found, turn on the compile feature '{}' \
+                                if you want to search for the binary file in the same directory as the current file.",
+                            embed_resolve_result.file_path.to_string_lossy(),
+                            COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE
+                        )
+                    };
+
                     return Err(PreprocessFileError::new(
                         embed_resolve_result.file_path_location.file_number,
                         PreprocessError::MessageWithRange(
-                            format!(
-                                "Binary file '{}' not found.",
-                                embed_resolve_result.file_path.to_string_lossy()
-                            ),
+                            msg,
                             embed_resolve_result.file_path_location.range,
                         ),
                     ));
@@ -809,14 +873,15 @@ where
         _directive_range: &Range,
         message_range: &Range,
     ) -> Result<(), PreprocessFileError> {
-        let prompt = Linter::MessageWithRange(
+        let linter = Linter::MessageWithRange(
             LintLevel::Warn,
+            LINTER_SUPPRESS_DIRECTIVE_WARN.to_string(),
             self.context.current_file_item.number,
             format!("User defined warning: {}", message),
             *message_range,
         );
 
-        self.context.linters.push(prompt);
+        self.context.linters.push(linter);
         Ok(())
     }
 
@@ -1869,26 +1934,49 @@ where
 
                                         code_parser.consume_closing_paren()?; // Consumes ')'
 
-                                        // Check `enable_single_argument_multiple_tokens` flag
-                                        if !self.context.enable_single_argument_multiple_tokens {
-                                            // Check that each argument consists of exactly one token.
-                                            for argument_token_with_locations in
-                                                &argument_token_with_locationss
+                                        // Check that each argument consists of exactly one token.
+                                        let mut multiple_tokens_argument_found = false;
+                                        for argument_token_with_locations in
+                                            &argument_token_with_locationss
+                                        {
+                                            if argument_token_with_locations.len() != 1 {
+                                                multiple_tokens_argument_found = true;
+                                                break;
+                                            }
+                                        }
+
+                                        if multiple_tokens_argument_found {
+                                            // Check `enable_macro_single_argument_multiple_tokens` flag
+                                            if self
+                                            .context
+                                            .is_compile_feature_enabled(COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS)
                                             {
-                                                if argument_token_with_locations.len() != 1 {
-                                                    return Err(PreprocessFileError {
-                                                        file_number: current_token_with_location
+                                                let linter = Linter::MessageWithRange(
+                                                    LintLevel::Info,
+                                                    LINTER_SUPPRESS_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS.to_string(),
+                                                    current_token_with_location
+                                                        .location
+                                                        .file_number,
+                                                    format!("Macro '{}' is invoked with an argument that consists of multiple tokens, which may lead to unexpected behavior.", name),
+                                                    current_token_with_location
+                                                        .location
+                                                        .range);
+                                                self.context.linters.push(linter);
+
+                                            }else {
+                                                return Err(PreprocessFileError {
+                                                    file_number: current_token_with_location
+                                                        .location
+                                                        .file_number,
+                                                    error: PreprocessError::MessageWithRange(
+                                                        format!("Each macro argument must be a single token. \
+                                                            Turn on the compile feature '{}' if you want to allow multiple tokens as arguments.",
+                                                            COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS),
+                                                        current_token_with_location
                                                             .location
-                                                            .file_number,
-                                                        error: PreprocessError::MessageWithRange(
-                                                            "Each macro argument must be a single token. To allow multiple tokens as arguments, enable relevant options."
-                                                                .to_owned(),
-                                                            current_token_with_location
-                                                                .location
-                                                                .range,
-                                                        ),
-                                                    });
-                                                }
+                                                            .range,
+                                                    ),
+                                                });
                                             }
                                         }
 
@@ -2166,7 +2254,8 @@ where
                                             .current_file_item
                                             .location
                                             .canonical_full_path,
-                                        self.context.resolve_relative_path_within_current_file,
+                                        self.context
+                                            .is_compile_feature_enabled(COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE),
                                     )
                                     .is_some()
                                 {
@@ -2307,7 +2396,8 @@ where
                                             .current_file_item
                                             .location
                                             .canonical_full_path,
-                                        self.context.resolve_relative_path_within_current_file,
+                                        self.context
+                                            .is_compile_feature_enabled(COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE)
                                     )
                                     .map_or(
                                         0,
@@ -2849,6 +2939,7 @@ where
             // File is empty
             self.context.linters.push(Linter::Message(
                 LintLevel::Warn,
+                LINTER_SUPPRESS_PRAGMA_ONCE_ABSENT.to_string(),
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
                     .to_string(),
@@ -2866,11 +2957,18 @@ where
                 Some(TokenWithRange { token: Token::Identifier(name), .. }) if name == "once"))
         {
             // The file has `#pragma once`, we can skip further checks.
+            // i.e., the traditional include guard is not necessary if `#pragma once` is present,
+            // even though it is a good practice to have both.
             return;
         }
 
+        // the suggested include guard macro name is generated based on the relative path of the header file,
+        // which is a common convention for include guard macro names. For example, if the relative
+        // path is `utils/helper.h`, the suggested include guard macro name
+        // should ends with `UTILS_HELPER_H`.
         let suggested_include_guard_macro_name = relative_path
             .to_string_lossy()
+            .trim_start_matches(['/', '-', '.', '_'])
             .replace(['/', '-', '.'], "_")
             .to_uppercase();
 
@@ -2922,8 +3020,9 @@ where
                 // Suggest using `#pragma once`:
                 self.context.linters.push(Linter::Message(
                     LintLevel::Info,
+                    LINTER_SUPPRESS_PREFER_PRAGMA_ONCE.to_string(),
                     file_number_of_header_file,
-                    "Consider adding additional `#pragma once` for better practice.".to_owned(),
+                    "Consider using `#pragma once` for better practice.".to_owned(),
                 ));
             } else {
                 // The include guard macro name does not match the suggested name.
@@ -2931,9 +3030,10 @@ where
                 // prevents potential conflicts with other macros.
                 self.context.linters.push(Linter::MessageWithRange(
                     LintLevel::Info,
+                    LINTER_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD.to_string(),
                     file_number_of_header_file,
                     format!(
-                        "Consider renaming the include guard macro to `{}` to follow the convention.",
+                        "Consider renaming the include guard macro ends with `{}` to follow the convention.",
                         suggested_include_guard_macro_name
                     ),
                     *range,
@@ -2944,6 +3044,7 @@ where
             // We suggest adding `#pragma once`.
             self.context.linters.push(Linter::Message(
                 LintLevel::Warn,
+                LINTER_SUPPRESS_PRAGMA_ONCE_ABSENT.to_string(),
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
                     .to_owned(),
@@ -3342,7 +3443,10 @@ fn concatenate_adjacent_strings(
 mod tests {
     use chrono::Local;
     use pretty_assertions::assert_eq;
-    use std::{collections::HashMap, path::Path};
+    use std::{
+        collections::{HashMap, HashSet},
+        path::Path,
+    };
 
     use crate::{
         FILE_NUMBER_SOURCE_FILE_BEGIN,
@@ -3352,7 +3456,10 @@ mod tests {
         location::Location,
         memory_file_provider::MemoryFileProvider,
         position::Position,
-        processor::{PreprocessResult, process_source_file},
+        processor::{
+            COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS, PreprocessResult,
+            process_source_file,
+        },
         range::Range,
         token::{
             C23_KEYWORD_STRS, IntegerNumber, IntegerNumberWidth, Number, Punctuator, Token,
@@ -3360,7 +3467,7 @@ mod tests {
         },
     };
 
-    // A helper function to process source code with predefinitions and return the full result, including output tokens and prompts.
+    // A helper function to process source code with predefinitions and return the full result, including output tokens and linters.
     fn process_with_predefinitions_and_result(
         src: &str,
         predefinitions: &HashMap<String, String>,
@@ -3373,9 +3480,9 @@ mod tests {
             &file_provider,
             &mut file_cache,
             &C23_KEYWORD_STRS,
+            &HashMap::new(),
+            &HashSet::new(),
             predefinitions,
-            false,
-            false,
             FILE_NUMBER_SOURCE_FILE_BEGIN,
             Path::new("src/main.c"),
             Path::new("/projects/hello/src/main.c"),
@@ -3392,7 +3499,7 @@ mod tests {
             .token_with_locations
     }
 
-    // A helper function to process source code with predefinitions and return the full result, including output tokens and prompts, with permissive mode enabled.
+    // A helper function to process source code with predefinitions and return the full result, including output tokens and linters, with permissive mode enabled.
     fn process_with_permissive_and_result(
         src: &str,
         predefinitions: &HashMap<String, String>,
@@ -3401,13 +3508,19 @@ mod tests {
         let mut file_provider = MemoryFileProvider::new();
         file_provider.add_user_text_file(Path::new("src/main.c"), src);
 
+        let mut compile_features = HashMap::new();
+        compile_features.insert(
+            COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS.to_string(),
+            true,
+        );
+
         process_source_file(
             &file_provider,
             &mut file_cache,
             &C23_KEYWORD_STRS,
+            &compile_features,
+            &HashSet::new(),
             predefinitions,
-            false,
-            true,
             FILE_NUMBER_SOURCE_FILE_BEGIN,
             Path::new("src/main.c"),
             Path::new("/projects/hello/src/main.c"),
@@ -3424,7 +3537,7 @@ mod tests {
             .token_with_locations
     }
 
-    // A helper function to process source code with headers and return the full result, including output tokens and prompts.
+    // A helper function to process source code with headers and return the full result, including output tokens and linters.
     fn process_with_headers_and_result(
         main_src: &str,
         user_header_files: &[(&str, &str)],
@@ -3454,9 +3567,9 @@ mod tests {
             &file_provider,
             &mut file_cache,
             &C23_KEYWORD_STRS,
+            &HashMap::new(),
+            &HashSet::new(),
             &predefinitions,
-            false,
-            false,
             FILE_NUMBER_SOURCE_FILE_BEGIN,
             Path::new("src/main.c"),
             Path::new("/projects/hello/src/main.c"),
@@ -5353,7 +5466,7 @@ FOO
             .unwrap()
             .linters
             .first(),
-            Some(Linter::Message(LintLevel::Warn, 1, _))
+            Some(Linter::Message(LintLevel::Warn, _, 1, _))
         ));
 
         // neither include guard nor `#pragma once` is present
@@ -5374,7 +5487,7 @@ FOO
             .unwrap()
             .linters
             .first(),
-            Some(Linter::Message(LintLevel::Warn, 1, _))
+            Some(Linter::Message(LintLevel::Warn, _, 1, _))
         ));
 
         // `#pragma once` is present, no info or warning
@@ -5419,11 +5532,10 @@ FOO
             .unwrap()
             .linters
             .first(),
-            Some(Linter::Message(LintLevel::Info, 1, _))
+            Some(Linter::Message(LintLevel::Info, _, 1, _))
         ));
 
-        // include guard is present, the macro name follows the convention,
-        // though it is not the suggested one.
+        // include guard is present, the macro name does not follow the convention.
         assert!(matches!(
             process_with_headers_and_result(
                 r#"
@@ -5444,7 +5556,7 @@ FOO
             .unwrap()
             .linters
             .first(),
-            Some(Linter::Message(LintLevel::Info, 1, _))
+            Some(Linter::Message(LintLevel::Info, _, 1, _))
         ));
 
         // include guard is present, but the macro name does not follow the suggested convention
@@ -5470,6 +5582,7 @@ FOO
             .first(),
             Some(Linter::MessageWithRange(
                 LintLevel::Info,
+                _,
                 1,
                 _,
                 Range {
@@ -5734,6 +5847,7 @@ FOO
                 .unwrap(),
             Linter::MessageWithRange(
                 LintLevel::Warn,
+                _,
                 FILE_NUMBER_SOURCE_FILE_BEGIN,
                 _,
                 Range {
