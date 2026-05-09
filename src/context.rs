@@ -14,14 +14,14 @@ use crate::{
     ast::Program,
     error::PreprocessError,
     lexer::lex_from_clean_str,
-    linter::Linter,
+    linter::Lint,
     location::Location,
     token::{TokenWithLocation, TokenWithRange},
 };
 
 /// The `Context` struct holds all state required during preprocessing.
 /// It manages file access, macro definitions, file inclusion tracking,
-/// and linter messages.
+/// and lint messages.
 pub struct Context<'a, T>
 where
     T: FileProvider,
@@ -39,7 +39,7 @@ where
     pub reserved_identifiers: &'a [&'a str],
 
     pub compile_features: &'a HashMap<String, bool>,
-    pub suppress_linters: &'a HashSet<String>,
+    pub suppress_lints: &'a HashSet<String>,
 
     /// Macro definitions and related state.
     pub macro_map: MacroMap,
@@ -53,7 +53,7 @@ where
     pub included_files: Vec<FileLocation>,
 
     /// User-facing messages, warnings, or information.
-    pub linters: Vec<Linter>,
+    pub lints: Vec<Lint>,
 
     /// Output tokens generated during preprocessing.
     pub output: Vec<TokenWithLocation>,
@@ -72,7 +72,7 @@ where
         // enable_include_file_path_relative_to_current_file: bool,
         // enable_macro_single_argument_multiple_tokens: bool,
         compile_features: &'a HashMap<String, bool>,
-        suppress_linters: &'a HashSet<String>,
+        suppress_lints: &'a HashSet<String>,
         current_file_number: usize,
         current_file_relative_path: &Path,
         current_file_canonical_full_path: &Path,
@@ -88,11 +88,11 @@ where
             header_file_cache: file_cache,
             reserved_identifiers,
             compile_features,
-            suppress_linters,
+            suppress_lints,
             current_file_item,
             macro_map: MacroMap::new(),
             included_files: Vec::new(),
-            linters: Vec::new(),
+            lints: Vec::new(),
             output: Vec::new(),
         }
     }
@@ -103,7 +103,7 @@ where
         file_cache: &'a mut HeaderFileCache,
         reserved_identifiers: &'a [&'a str],
         compile_features: &'a HashMap<String, bool>,
-        suppress_linters: &'a HashSet<String>,
+        suppress_lints: &'a HashSet<String>,
         predefinitions: &HashMap<String, String>,
         current_file_number: usize,
         current_file_relative_path: &Path,
@@ -120,11 +120,11 @@ where
             header_file_cache: file_cache,
             reserved_identifiers,
             compile_features,
-            suppress_linters,
+            suppress_lints,
             macro_map: MacroMap::from_key_values(predefinitions)?,
             current_file_item,
             included_files: Vec::new(),
-            linters: Vec::new(),
+            lints: Vec::new(),
             output: Vec::new(),
         })
     }
@@ -143,11 +143,10 @@ where
             .unwrap_or(false)
     }
 
-    pub fn is_linter_suppressed(&self, linter_name: &str) -> bool {
-        // The set of linters to be suppressed during preprocessing.
-        self.suppress_linters.contains(linter_name)
+    pub fn is_lint_suppressed(&self, lint_name: &str) -> bool {
+        // The set of lints to be suppressed during preprocessing.
+        self.suppress_lints.contains(lint_name)
     }
-
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -336,7 +335,7 @@ impl FilePathResolveResult {
 #[derive(Debug, PartialEq)]
 pub struct PreprocessResult {
     pub token_with_locations: Vec<TokenWithLocation>,
-    pub linters: Vec<Linter>,
+    pub lints: Vec<Lint>,
 }
 
 /// Canonicalizes a given path without checking the real file system.

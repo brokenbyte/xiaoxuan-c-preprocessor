@@ -21,10 +21,10 @@ use crate::{
     error::{PreprocessError, PreprocessFileError},
     expression::evaluate,
     linter::{
-        LINTER_SUPPRESS_DIRECTIVE_WARN,
-        LINTER_SUPPRESS_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS,
-        LINTER_SUPPRESS_PRAGMA_ONCE_ABSENT, LINTER_SUPPRESS_PREFER_PRAGMA_ONCE,
-        LINTER_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD, LintLevel, Linter,
+        LINT_SUPPRESS_DIRECTIVE_WARN,
+        LINT_SUPPRESS_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS,
+        LINT_SUPPRESS_PRAGMA_ONCE_ABSENT, LINT_SUPPRESS_PREFER_PRAGMA_ONCE,
+        LINT_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD, Lint, LintLevel,
     },
     location::Location,
     parser::parse_from_str,
@@ -119,17 +119,17 @@ pub fn process_source_file<T>(
     // The absent of a feature in this set is equivalent to the feature being set to false.
     compile_features: &HashMap<String, bool>,
 
-    // The set of linters to be suppressed during preprocessing.
+    // The set of lints to be suppressed during preprocessing.
     //
-    // The supported linters include:
+    // The supported lints include:
     // - `warn_directive`
     // - `include_guard_not_found`
     // - `prefer_pragma_once`
     // - `unconventional_include_guard`
     //
-    // The absent of a linter in this set means the linter is not suppressed
+    // The absent of a lint in this set means the lint is not suppressed
     // and will be reported to the user if triggered.
-    suppress_linters: &HashSet<String>,
+    suppress_lints: &HashSet<String>,
 
     // The predefined macros to be used during preprocessing.
     // Such as `__STDC__` and `__STDC_VERSION__` which are provided by the compiler.
@@ -166,7 +166,7 @@ where
         header_file_cache,
         reserved_identifiers,
         compile_features,
-        suppress_linters,
+        suppress_lints,
         predefinitions,
         source_file_number,
         source_file_path_name,
@@ -202,9 +202,7 @@ where
     // concatenates adjacent string literals
     // e.g. "hello" " " "world" -> "hello world"
     // see: https://en.cppreference.com/w/c/language/translation_phases.html
-    let Context {
-        linters, output, ..
-    } = processor.context;
+    let Context { lints, output, .. } = processor.context;
 
     let mut iter = output.into_iter();
     let mut peekable_iter = PeekableIter::new(&mut iter);
@@ -212,7 +210,7 @@ where
 
     let result = PreprocessResult {
         token_with_locations: concatenated,
-        linters,
+        lints,
     };
 
     Ok(result)
@@ -235,7 +233,7 @@ where
         file_cache: &'a mut HeaderFileCache,
         reserved_identifiers: &'a [&'a str],
         compile_features: &'a HashMap<String, bool>,
-        suppress_linters: &'a HashSet<String>,
+        suppress_lints: &'a HashSet<String>,
         predefinitions: &HashMap<String, String>,
         source_file_number: usize,
         source_file_path_name: &Path,
@@ -246,7 +244,7 @@ where
             file_cache,
             reserved_identifiers,
             compile_features,
-            suppress_linters,
+            suppress_lints,
             predefinitions,
             source_file_number,
             source_file_path_name,
@@ -873,15 +871,15 @@ where
         _directive_range: &Range,
         message_range: &Range,
     ) -> Result<(), PreprocessFileError> {
-        let linter = Linter::MessageWithRange(
+        let lint = Lint::MessageWithRange(
             LintLevel::Warn,
-            LINTER_SUPPRESS_DIRECTIVE_WARN.to_string(),
+            LINT_SUPPRESS_DIRECTIVE_WARN.to_string(),
             self.context.current_file_item.number,
             format!("User defined warning: {}", message),
             *message_range,
         );
 
-        self.context.linters.push(linter);
+        self.context.lints.push(lint);
         Ok(())
     }
 
@@ -1951,9 +1949,9 @@ where
                                             .context
                                             .is_compile_feature_enabled(COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS)
                                             {
-                                                let linter = Linter::MessageWithRange(
+                                                let lint = Lint::MessageWithRange(
                                                     LintLevel::Info,
-                                                    LINTER_SUPPRESS_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS.to_string(),
+                                                    LINT_SUPPRESS_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS.to_string(),
                                                     current_token_with_location
                                                         .location
                                                         .file_number,
@@ -1961,7 +1959,7 @@ where
                                                     current_token_with_location
                                                         .location
                                                         .range);
-                                                self.context.linters.push(linter);
+                                                self.context.lints.push(lint);
 
                                             }else {
                                                 return Err(PreprocessFileError {
@@ -2937,9 +2935,9 @@ where
 
         if first_statement_opt.is_none() {
             // File is empty
-            self.context.linters.push(Linter::Message(
+            self.context.lints.push(Lint::Message(
                 LintLevel::Warn,
-                LINTER_SUPPRESS_PRAGMA_ONCE_ABSENT.to_string(),
+                LINT_SUPPRESS_PRAGMA_ONCE_ABSENT.to_string(),
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
                     .to_string(),
@@ -3018,9 +3016,9 @@ where
                 // The include guard macro name matches the suggested name.
 
                 // Suggest using `#pragma once`:
-                self.context.linters.push(Linter::Message(
+                self.context.lints.push(Lint::Message(
                     LintLevel::Info,
-                    LINTER_SUPPRESS_PREFER_PRAGMA_ONCE.to_string(),
+                    LINT_SUPPRESS_PREFER_PRAGMA_ONCE.to_string(),
                     file_number_of_header_file,
                     "Consider using `#pragma once` for better practice.".to_owned(),
                 ));
@@ -3028,9 +3026,9 @@ where
                 // The include guard macro name does not match the suggested name.
                 // Suggest renaming the include guard macro to follow the convention, which
                 // prevents potential conflicts with other macros.
-                self.context.linters.push(Linter::MessageWithRange(
+                self.context.lints.push(Lint::MessageWithRange(
                     LintLevel::Info,
-                    LINTER_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD.to_string(),
+                    LINT_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD.to_string(),
                     file_number_of_header_file,
                     format!(
                         "Consider renaming the include guard macro ends with `{}` to follow the convention.",
@@ -3042,9 +3040,9 @@ where
         } else {
             // The file does not have an include guard or `#pragma once`.
             // We suggest adding `#pragma once`.
-            self.context.linters.push(Linter::Message(
+            self.context.lints.push(Lint::Message(
                 LintLevel::Warn,
-                LINTER_SUPPRESS_PRAGMA_ONCE_ABSENT.to_string(),
+                LINT_SUPPRESS_PRAGMA_ONCE_ABSENT.to_string(),
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
                     .to_owned(),
@@ -3452,7 +3450,7 @@ mod tests {
         FILE_NUMBER_SOURCE_FILE_BEGIN,
         context::HeaderFileCache,
         error::{PreprocessError, PreprocessFileError},
-        linter::{LintLevel, Linter},
+        linter::{Lint, LintLevel},
         location::Location,
         memory_file_provider::MemoryFileProvider,
         position::Position,
@@ -3467,7 +3465,7 @@ mod tests {
         },
     };
 
-    // A helper function to process source code with predefinitions and return the full result, including output tokens and linters.
+    // A helper function to process source code with predefinitions and return the full result, including output tokens and lints.
     fn process_with_predefinitions_and_result(
         src: &str,
         predefinitions: &HashMap<String, String>,
@@ -3499,7 +3497,8 @@ mod tests {
             .token_with_locations
     }
 
-    // A helper function to process source code with predefinitions and return the full result, including output tokens and linters, with permissive mode enabled.
+    // A helper function to process source code with predefinitions and return the full result,
+    // including output tokens and lints, with permissive mode enabled.
     fn process_with_permissive_and_result(
         src: &str,
         predefinitions: &HashMap<String, String>,
@@ -3537,7 +3536,7 @@ mod tests {
             .token_with_locations
     }
 
-    // A helper function to process source code with headers and return the full result, including output tokens and linters.
+    // A helper function to process source code with headers and return the full result, including output tokens and lints.
     fn process_with_headers_and_result(
         main_src: &str,
         user_header_files: &[(&str, &str)],
@@ -5464,9 +5463,9 @@ FOO
                 &[],
             )
             .unwrap()
-            .linters
+            .lints
             .first(),
-            Some(Linter::Message(LintLevel::Warn, _, 1, _))
+            Some(Lint::Message(LintLevel::Warn, _, 1, _))
         ));
 
         // neither include guard nor `#pragma once` is present
@@ -5485,9 +5484,9 @@ FOO
                 &[],
             )
             .unwrap()
-            .linters
+            .lints
             .first(),
-            Some(Linter::Message(LintLevel::Warn, _, 1, _))
+            Some(Lint::Message(LintLevel::Warn, _, 1, _))
         ));
 
         // `#pragma once` is present, no info or warning
@@ -5507,7 +5506,7 @@ FOO
                 &[],
             )
             .unwrap()
-            .linters
+            .lints
             .is_empty()
         );
 
@@ -5530,9 +5529,9 @@ FOO
                 &[],
             )
             .unwrap()
-            .linters
+            .lints
             .first(),
-            Some(Linter::Message(LintLevel::Info, _, 1, _))
+            Some(Lint::Message(LintLevel::Info, _, 1, _))
         ));
 
         // include guard is present, the macro name does not follow the convention.
@@ -5554,9 +5553,9 @@ FOO
                 &[],
             )
             .unwrap()
-            .linters
+            .lints
             .first(),
-            Some(Linter::Message(LintLevel::Info, _, 1, _))
+            Some(Lint::Message(LintLevel::Info, _, 1, _))
         ));
 
         // include guard is present, but the macro name does not follow the suggested convention
@@ -5578,9 +5577,9 @@ FOO
                 &[],
             )
             .unwrap()
-            .linters
+            .lints
             .first(),
-            Some(Linter::MessageWithRange(
+            Some(Lint::MessageWithRange(
                 LintLevel::Info,
                 _,
                 1,
@@ -5842,10 +5841,10 @@ FOO
         assert!(matches!(
             process_with_predefinitions_and_result(r#"#warning "foobar""#, &predefinitions,)
                 .unwrap()
-                .linters
+                .lints
                 .first()
                 .unwrap(),
-            Linter::MessageWithRange(
+            Lint::MessageWithRange(
                 LintLevel::Warn,
                 _,
                 FILE_NUMBER_SOURCE_FILE_BEGIN,

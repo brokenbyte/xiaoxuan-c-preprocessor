@@ -85,7 +85,7 @@ fn calculate_snippet_and_indication(
 }
 
 /// Generates a formatted error message with a snippet and highlight indication
-/// based on the source text and the error/linter message.
+/// based on the source text and the error/lint message.
 fn attach_with_snippet(
     source_chars: &mut dyn Iterator<Item = char>,
     snippet_and_indication: &SnippetAndIndication,
