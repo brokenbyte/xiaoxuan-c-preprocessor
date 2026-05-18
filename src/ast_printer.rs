@@ -7,7 +7,7 @@
 use std::io::Write;
 
 use crate::{
-    ast::{Condition, Define, If, Program, Statement},
+    ast::{Condition, Define, FunctionParameter, If, Program, Statement},
     token::TokenWithRange,
 };
 
@@ -38,10 +38,13 @@ fn print_define<W: Write>(
     indent_level: usize,
 ) -> std::io::Result<()> {
     // Join parameter names with commas
-    let join_params = |params: &[String]| {
+    let join_params = |params: &[FunctionParameter]| {
         params
             .iter()
-            .map(|p| p.to_owned())
+            .map(|p| match p {
+                FunctionParameter::Identifier(name) => name.to_owned(),
+                FunctionParameter::Variadic => "...".to_string(),
+            })
             .collect::<Vec<_>>()
             .join(", ")
     };
@@ -50,7 +53,8 @@ fn print_define<W: Write>(
 
     match define {
         Define::ObjectLike {
-            identifier: (name, _),
+            identifier: name,
+            identifier_range: _,
             definition,
         } => {
             if definition.is_empty() {
@@ -66,7 +70,8 @@ fn print_define<W: Write>(
             }
         }
         Define::FunctionLike {
-            identifier: (name, _),
+            identifier: name,
+            identifier_range: _,
             parameters,
             definition,
         } => {
@@ -95,8 +100,8 @@ fn print_if<W: Write>(writer: &mut W, if_: &If, indent_level: usize) -> std::io:
                 .map(|TokenWithRange { token, .. }| token.to_string())
                 .collect::<Vec<_>>()
                 .join(" "),
-            Condition::Defined(id, _) => id.to_owned(),
-            Condition::NotDefined(id, _) => id.to_owned(),
+            Condition::Defined { identifier, .. } => identifier.to_owned(),
+            Condition::NotDefined { identifier, .. } => identifier.to_owned(),
         };
 
         let directive_text = match &branch.condition {
@@ -107,14 +112,14 @@ fn print_if<W: Write>(writer: &mut W, if_: &If, indent_level: usize) -> std::io:
                     "#elif"
                 }
             }
-            Condition::Defined(_, _) => {
+            Condition::Defined { .. } => {
                 if first_branch {
                     "#ifdef"
                 } else {
                     "#elifdef"
                 }
             }
-            Condition::NotDefined(_, _) => {
+            Condition::NotDefined { .. } => {
                 if first_branch {
                     "#ifndef"
                 } else {
@@ -132,9 +137,9 @@ fn print_if<W: Write>(writer: &mut W, if_: &If, indent_level: usize) -> std::io:
         first_branch = false;
     }
 
-    if let Some((alternative, _)) = &if_.alternative {
+    if let Some(alternative) = &if_.alternative {
         writeln!(writer, "{}#else", indent)?;
-        for statement in alternative {
+        for statement in &alternative.statements {
             print_statement(writer, statement, indent_level + 1)?;
         }
     }
@@ -166,7 +171,10 @@ pub fn print_statement<W: Write>(
     let indent = DEFAULT_INDENT_CHARS.repeat(indent_level);
 
     match statement {
-        Statement::Pragma(pragma, _) => {
+        Statement::Pragma {
+            pragma,
+            directive_range: _,
+        } => {
             // print_pragma(writer, pragma, indent_level),
             writeln!(
                 writer,
@@ -175,24 +183,45 @@ pub fn print_statement<W: Write>(
                 join_tokens(&pragma.components)
             )
         }
-        Statement::Define(define, _) => print_define(writer, define, indent_level),
-        Statement::Undef(name, ..) => {
-            writeln!(writer, "{}#undef {}", indent, name)
+        Statement::Define {
+            define,
+            directive_range: _,
+        } => print_define(writer, define, indent_level),
+        Statement::Undef {
+            identifier,
+            directive_range: _,
+            identifier_range: _,
+        } => {
+            writeln!(writer, "{}#undef {}", indent, identifier)
         }
-        Statement::Include(components, _) => {
+        Statement::Include {
+            components,
+            directive_range: _,
+        } => {
             // print_include(writer, include, indent_level),
             writeln!(writer, "{}#include {}", indent, join_tokens(components))
         }
-        Statement::Embed(components, _) => {
+        Statement::Embed {
+            components,
+            directive_range: _,
+        } => {
             // print_embed(writer, embed, indent_level),
             writeln!(writer, "{}#embed {}", indent, join_tokens(components))
         }
         Statement::If(if_) => print_if(writer, if_, indent_level),
-        Statement::Error(msg, ..) => {
-            writeln!(writer, "{}#error \"{}\"", indent, msg)
+        Statement::Error {
+            message,
+            directive_range: _,
+            message_range: _,
+        } => {
+            writeln!(writer, "{}#error \"{}\"", indent, message)
         }
-        Statement::Warning(msg, ..) => {
-            writeln!(writer, "{}#warning \"{}\"", indent, msg)
+        Statement::Warning {
+            message,
+            directive_range: _,
+            message_range: _,
+        } => {
+            writeln!(writer, "{}#warning \"{}\"", indent, message)
         }
         Statement::Code(code) => print_code(writer, code, indent_level),
     }
@@ -219,7 +248,10 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use crate::{
-        ast::{Branch, Condition, Define, If, Pragma, Program, Statement},
+        ast::{
+            AlternativeBranch, Branch, Condition, Define, FunctionParameter, If, Pragma, Program,
+            Statement,
+        },
         ast_printer::print_program_to_string,
         range::Range,
         token::{
@@ -266,12 +298,16 @@ mod tests {
         // Test for an object-like macro
 
         let define_object_like = Define::ObjectLike {
-            identifier: ("MAX".to_string(), Range::default()),
+            identifier: "MAX".to_string(),
+            identifier_range: Range::default(),
             definition: vec![TokenWithRange::new_integer_number(100)],
         };
 
         let program_object_like = Program {
-            statements: vec![Statement::Define(define_object_like, Range::default())],
+            statements: vec![Statement::Define {
+                define: define_object_like,
+                directive_range: Range::default(),
+            }],
         };
 
         let output_object_like = print_program_to_string(&program_object_like);
@@ -280,15 +316,16 @@ mod tests {
         // Test for an empty object-like macro
 
         let define_object_like_empty = Define::ObjectLike {
-            identifier: ("EMPTY".to_string(), Range::default()),
+            identifier: "EMPTY".to_string(),
+            identifier_range: Range::default(),
             definition: vec![],
         };
 
         let program_object_like_empty = Program {
-            statements: vec![Statement::Define(
-                define_object_like_empty,
-                Range::default(),
-            )],
+            statements: vec![Statement::Define {
+                define: define_object_like_empty,
+                directive_range: Range::default(),
+            }],
         };
 
         let output_object_like_empty = print_program_to_string(&program_object_like_empty);
@@ -297,8 +334,12 @@ mod tests {
         // Test for a function-like macro
 
         let define_function_like = Define::FunctionLike {
-            identifier: ("SQUARE".to_string(), Range::default()),
-            parameters: vec!["X".to_string(), "Y".to_string()],
+            identifier: "SQUARE".to_string(),
+            identifier_range: Range::default(),
+            parameters: vec![
+                FunctionParameter::Identifier("X".to_string()),
+                FunctionParameter::Identifier("Y".to_string()),
+            ],
             definition: vec![
                 // omit lots of parentheses for simplicity
                 TokenWithRange::new_identifier("X"),
@@ -308,7 +349,10 @@ mod tests {
         };
 
         let program_function_like = Program {
-            statements: vec![Statement::Define(define_function_like, Range::default())],
+            statements: vec![Statement::Define {
+                define: define_function_like,
+                directive_range: Range::default(),
+            }],
         };
         let output_function_like = print_program_to_string(&program_function_like);
         assert_eq!(output_function_like, "#define SQUARE(X, Y) X * Y\n");
@@ -316,7 +360,11 @@ mod tests {
 
     #[test]
     fn test_print_undef() {
-        let statement = Statement::Undef("FOO".to_string(), Range::default(), Range::default());
+        let statement = Statement::Undef {
+            identifier: "FOO".to_string(),
+            directive_range: Range::default(),
+            identifier_range: Range::default(),
+        };
 
         let program = Program {
             statements: vec![statement],
@@ -331,10 +379,10 @@ mod tests {
         // Test for including with an identifier
         let include_with_identifier = vec![TokenWithRange::new_identifier("HEADER")];
         let program_with_identifier = Program {
-            statements: vec![Statement::Include(
-                include_with_identifier,
-                Range::default(),
-            )],
+            statements: vec![Statement::Include {
+                components: include_with_identifier,
+                directive_range: Range::default(),
+            }],
         };
 
         let output_with_identifier = print_program_to_string(&program_with_identifier);
@@ -347,10 +395,10 @@ mod tests {
         )];
 
         let output_with_system_header = Program {
-            statements: vec![Statement::Include(
-                include_with_system_header,
-                Range::default(),
-            )],
+            statements: vec![Statement::Include {
+                components: include_with_system_header,
+                directive_range: Range::default(),
+            }],
         };
         let output_with_system_header_str = print_program_to_string(&output_with_system_header);
         assert_eq!(output_with_system_header_str, "#include <stdio.h>\n");
@@ -362,10 +410,10 @@ mod tests {
         )];
 
         let program_with_quoted_header = Program {
-            statements: vec![Statement::Include(
-                include_with_quoted_header,
-                Range::default(),
-            )],
+            statements: vec![Statement::Include {
+                components: include_with_quoted_header,
+                directive_range: Range::default(),
+            }],
         };
         let output_with_quoted_header = print_program_to_string(&program_with_quoted_header);
         assert_eq!(output_with_quoted_header, "#include \"my_header.h\"\n");
@@ -376,7 +424,10 @@ mod tests {
         // Test for embedding with an identifier
         let embed_with_identifier = vec![TokenWithRange::new_identifier("HEMASHUSHU_JPEG_FILE")];
         let program_with_identifier = Program {
-            statements: vec![Statement::Embed(embed_with_identifier, Range::default())],
+            statements: vec![Statement::Embed {
+                components: embed_with_identifier,
+                directive_range: Range::default(),
+            }],
         };
 
         let output_with_identifier = print_program_to_string(&program_with_identifier);
@@ -389,7 +440,10 @@ mod tests {
         )];
 
         let output_with_system_header = Program {
-            statements: vec![Statement::Embed(embed_with_system_header, Range::default())],
+            statements: vec![Statement::Embed {
+                components: embed_with_system_header,
+                directive_range: Range::default(),
+            }],
         };
         let output_with_system_header_str = print_program_to_string(&output_with_system_header);
         assert_eq!(output_with_system_header_str, "#embed <hippo.bin>\n");
@@ -401,7 +455,10 @@ mod tests {
         )];
 
         let program_with_quoted_header = Program {
-            statements: vec![Statement::Embed(embed_with_quoted_header, Range::default())],
+            statements: vec![Statement::Embed {
+                components: embed_with_quoted_header,
+                directive_range: Range::default(),
+            }],
         };
         let output_with_quoted_header = print_program_to_string(&program_with_quoted_header);
         assert_eq!(output_with_quoted_header, "#embed \"spark.png\"\n");
@@ -449,7 +506,10 @@ mod tests {
         ];
 
         let program_with_params = Program {
-            statements: vec![Statement::Embed(embed_with_params, Range::default())],
+            statements: vec![Statement::Embed {
+                components: embed_with_params,
+                directive_range: Range::default(),
+            }],
         };
         let output_with_params = print_program_to_string(&program_with_params);
 
@@ -491,7 +551,10 @@ mod tests {
         // `#ifdef IDENTIFIER ... #else ... #endif`
         let ifdef_else = If {
             branches: vec![Branch {
-                condition: Condition::Defined("IDENTIFIER".to_string(), Range::default()),
+                condition: Condition::Defined {
+                    identifier: "IDENTIFIER".to_string(),
+                    directive_range: Range::default(),
+                },
                 consequence: vec![Statement::Code(vec![
                     TokenWithRange::new_identifier("int"),
                     TokenWithRange::new_identifier("x"),
@@ -499,14 +562,14 @@ mod tests {
                 ])],
                 directive_range: Range::default(),
             }],
-            alternative: Some((
-                vec![Statement::Code(vec![
+            alternative: Some(AlternativeBranch {
+                statements: vec![Statement::Code(vec![
                     TokenWithRange::new_identifier("int"),
                     TokenWithRange::new_identifier("y"),
                     TokenWithRange::new_punctuator(Punctuator::Semicolon),
                 ])],
-                Range::default(),
-            )),
+                directive_range: Range::default(),
+            }),
         };
 
         let program_ifdef_else = Program {
@@ -547,7 +610,10 @@ mod tests {
                     directive_range: Range::default(),
                 },
                 Branch {
-                    condition: Condition::Defined("FOO".to_string(), Range::default()),
+                    condition: Condition::Defined {
+                        identifier: "FOO".to_string(),
+                        directive_range: Range::default(),
+                    },
                     consequence: vec![Statement::Code(vec![
                         TokenWithRange::new_identifier("c"),
                         TokenWithRange::new_punctuator(Punctuator::Semicolon),
@@ -555,13 +621,13 @@ mod tests {
                     directive_range: Range::default(),
                 },
             ],
-            alternative: Some((
-                vec![Statement::Code(vec![
+            alternative: Some(AlternativeBranch {
+                statements: vec![Statement::Code(vec![
                     TokenWithRange::new_identifier("d"),
                     TokenWithRange::new_punctuator(Punctuator::Semicolon),
                 ])],
-                Range::default(),
-            )),
+                directive_range: Range::default(),
+            }),
         };
 
         let program_if_multi = Program {
@@ -578,7 +644,11 @@ mod tests {
     #[test]
     fn test_print_error() {
         let msg = "This is an error message";
-        let statement = Statement::Error(msg.to_string(), Range::default(), Range::default());
+        let statement = Statement::Error {
+            message: msg.to_string(),
+            directive_range: Range::default(),
+            message_range: Range::default(),
+        };
 
         let program = Program {
             statements: vec![statement],
@@ -591,7 +661,11 @@ mod tests {
     #[test]
     fn test_print_warning() {
         let msg = "This is a warning message";
-        let statement = Statement::Warning(msg.to_string(), Range::default(), Range::default());
+        let statement = Statement::Warning {
+            message: msg.to_string(),
+            directive_range: Range::default(),
+            message_range: Range::default(),
+        };
 
         let program = Program {
             statements: vec![statement],
@@ -612,7 +686,10 @@ mod tests {
         };
 
         let program = Program {
-            statements: vec![Statement::Pragma(pragma, Range::default())],
+            statements: vec![Statement::Pragma {
+                pragma,
+                directive_range: Range::default(),
+            }],
         };
 
         let output = print_program_to_string(&program);
@@ -639,30 +716,31 @@ mod tests {
     fn test_print_program() {
         let program = Program {
             statements: vec![
-                Statement::Pragma(
-                    Pragma {
+                Statement::Pragma {
+                    pragma: Pragma {
                         components: vec![
                             TokenWithRange::new_identifier("STDC"),
                             TokenWithRange::new_identifier("FENV_ACCESS"),
                             TokenWithRange::new_identifier("ON"),
                         ],
                     },
-                    Range::default(),
-                ),
-                Statement::Define(
-                    Define::ObjectLike {
-                        identifier: ("MAX".to_string(), Range::default()),
+                    directive_range: Range::default(),
+                },
+                Statement::Define {
+                    define: Define::ObjectLike {
+                        identifier: "MAX".to_string(),
+                        identifier_range: Range::default(),
                         definition: vec![TokenWithRange::new_integer_number(100)],
                     },
-                    Range::default(),
-                ),
-                Statement::Include(
-                    vec![TokenWithRange::new(
+                    directive_range: Range::default(),
+                },
+                Statement::Include {
+                    components: vec![TokenWithRange::new(
                         Token::_FilePath("stdio.h".to_string(), true),
                         Range::default(),
                     )],
-                    Range::default(),
-                ),
+                    directive_range: Range::default(),
+                },
                 Statement::Code(vec![
                     TokenWithRange::new_identifier("printf"),
                     TokenWithRange::new_punctuator(Punctuator::ParenthesisOpen),

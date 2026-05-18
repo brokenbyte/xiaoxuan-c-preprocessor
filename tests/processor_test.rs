@@ -13,12 +13,12 @@ use std::{
 use pretty_assertions::assert_eq;
 
 use ancpp::{
-    FILE_NUMBER_SOURCE_FILE_BEGIN,
+    consts::{C23_KEYWORD_STRS, FILE_NUMBER_SOURCE_FILE_BEGIN},
     context::{HeaderFileCache, PreprocessResult},
     error::PreprocessFileError,
     native_file_provider::NativeFileProvider,
     process_source_file,
-    token::{C23_KEYWORD_STRS, TokenWithLocation},
+    token::TokenWithLocation,
 };
 
 /// Helpers to get the path to the test resources rootfs directory.

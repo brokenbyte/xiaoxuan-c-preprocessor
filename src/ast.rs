@@ -13,12 +13,16 @@ pub struct Program {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
-    Define(Define, /* directive_range */ Range),
-    Undef(
-        String,
-        /* directive_range */ Range,
-        /* identifier_range */ Range,
-    ),
+    Define {
+        define: Define,
+        directive_range: Range,
+    },
+
+    Undef {
+        identifier: String,
+        directive_range: Range,
+        identifier_range: Range,
+    },
 
     // Source file inclusion
     //
@@ -36,10 +40,10 @@ pub enum Statement {
     //
     // See also:
     // https://en.cppreference.com/w/c/preprocessor/include.html
-    Include(
-        /* components */ Vec<TokenWithRange>,
-        /* directive_range */ Range,
-    ),
+    Include {
+        components: Vec<TokenWithRange>,
+        directive_range: Range,
+    },
 
     // Binary resource inclusion (since C23)
     //
@@ -79,7 +83,8 @@ pub enum Statement {
     //
     // ```rust
     // Embed {
-    //     file_path: (String, Range),
+    //     file_path: String,
+    //     file_path_range: Range,
     //
     //     /* If true, the file path is enclosed in angle brackets `<...>`, */
     //     /* otherwise in double quotes `"..."`. */
@@ -99,23 +104,26 @@ pub enum Statement {
     //     if_empty: Option<Vec<u8>>,
     // }
     // ```
-    Embed(
-        /* components */ Vec<TokenWithRange>,
-        /* directive_range */ Range,
-    ),
+    Embed {
+        components: Vec<TokenWithRange>,
+        directive_range: Range,
+    },
 
     If(If),
-    Error(
-        String,
-        /* directive_range */ Range,
-        /* message_range */ Range,
-    ),
-    Warning(
-        String,
-        /* directive_range */ Range,
-        /* message_range */ Range,
-    ),
-    Pragma(Pragma, /* directive_range */ Range),
+    Error {
+        message: String,
+        directive_range: Range,
+        message_range: Range,
+    },
+    Warning {
+        message: String,
+        directive_range: Range,
+        message_range: Range,
+    },
+    Pragma {
+        pragma: Pragma,
+        directive_range: Range,
+    },
 
     // Regular C code (non-directive)
     Code(Vec<TokenWithRange>),
@@ -146,22 +154,30 @@ pub enum Statement {
 pub enum Define {
     ObjectLike {
         // The macro name, string "defined" is treated as a "keyword" and cannot be used as a macro name
-        identifier: (String, Range),
+        identifier: String,
+        identifier_range: Range,
 
         // Can be empty, e.g., `#define FOO`
         definition: Vec<TokenWithRange>,
     },
     FunctionLike {
         // The macro name, string "defined" is treated as a "keyword" and cannot be used as a macro name
-        identifier: (String, Range),
+        identifier: String,
+        identifier_range: Range,
 
         // The parameter names.
         // If the macro is variadic, the last parameter name is `...`.
-        parameters: Vec<String>,
+        parameters: Vec<FunctionParameter>,
 
         // Can be empty, e.g., `#define FOO(x, y)`
         definition: Vec<TokenWithRange>,
     },
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FunctionParameter {
+    Identifier(String),
+    Variadic,
 }
 
 // Conditional compilation
@@ -186,7 +202,7 @@ pub enum Define {
 #[derive(Debug, PartialEq, Clone)]
 pub struct If {
     pub branches: Vec<Branch>,
-    pub alternative: Option<(Vec<Statement>, Range)>, // `#else` branch
+    pub alternative: Option<AlternativeBranch>, // `#else` branch
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -194,7 +210,7 @@ pub struct Branch {
     pub condition: Condition,
     pub consequence: Vec<Statement>,
 
-    // Range of the `#if`, `#ifdef`, `#ifndef`, `#elif`, `#elifdef`, or `#elifndef` directive
+    // Directive range (`#if`, `#ifdef`, `#ifndef`, `#elif`, `#elifdef`, and `#elifndef`)
     pub directive_range: Range,
 }
 
@@ -205,10 +221,25 @@ pub enum Condition {
     Expression(/* expression */ Vec<TokenWithRange>),
 
     // `#ifdef identifier`
-    Defined(/* identifier */ String, Range),
+    Defined {
+        identifier: String,
+        directive_range: Range,
+    },
 
     // `#ifndef identifier`
-    NotDefined(/* identifier */ String, Range),
+    NotDefined {
+        identifier: String,
+        directive_range: Range,
+    },
+}
+
+// `#else` branch of conditional compilation
+#[derive(Debug, PartialEq, Clone)]
+pub struct AlternativeBranch {
+    pub statements: Vec<Statement>,
+
+    // `#else` directive range
+    pub directive_range: Range,
 }
 
 // Implementation-defined behavior control

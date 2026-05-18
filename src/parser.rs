@@ -5,7 +5,10 @@
 // For more details, see the LICENSE, LICENSE.additional, and CONTRIBUTING files.
 
 use crate::{
-    ast::{Branch, Condition, Define, If, Pragma, Program, Statement},
+    ast::{
+        AlternativeBranch, Branch, Condition, Define, FunctionParameter, If, Pragma, Program,
+        Statement,
+    },
     error::PreprocessError,
     lexer::lex_from_str,
     peekable_iter::PeekableIter,
@@ -230,7 +233,10 @@ impl Parser<'_> {
                                 "define" => {
                                     // Handle `define` directive.
                                     let define = self.parse_define()?;
-                                    Statement::Define(define, directive_range)
+                                    Statement::Define {
+                                        define,
+                                        directive_range,
+                                    }
                                 }
                                 "undef" => {
                                     // Handle `undef` directive.
@@ -239,17 +245,27 @@ impl Parser<'_> {
                                     let identifier_range = self.last_range;
                                     self.consume_directive_end_or_eof()?;
 
-                                    Statement::Undef(identifier, directive_range, identifier_range)
+                                    Statement::Undef {
+                                        identifier,
+                                        directive_range,
+                                        identifier_range,
+                                    }
                                 }
                                 "include" => {
                                     // Handle `include` directive.
                                     let components = self.parse_include()?;
-                                    Statement::Include(components, directive_range)
+                                    Statement::Include {
+                                        components,
+                                        directive_range,
+                                    }
                                 }
                                 "embed" => {
                                     // Handle `embed` directive.
                                     let components = self.parse_embed()?;
-                                    Statement::Embed(components, directive_range)
+                                    Statement::Embed {
+                                        components,
+                                        directive_range,
+                                    }
                                 }
                                 "if" | "ifdef" | "ifndef" => {
                                     // Handle `if` directive.
@@ -274,7 +290,11 @@ impl Parser<'_> {
 
                                     self.consume_directive_end_or_eof()?;
 
-                                    Statement::Error(message, directive_range, message_range)
+                                    Statement::Error {
+                                        message,
+                                        directive_range,
+                                        message_range,
+                                    }
                                 }
                                 "warning" => {
                                     // Handle warning directive.
@@ -284,12 +304,19 @@ impl Parser<'_> {
 
                                     self.consume_directive_end_or_eof()?;
 
-                                    Statement::Warning(message, directive_range, message_range)
+                                    Statement::Warning {
+                                        message,
+                                        directive_range,
+                                        message_range,
+                                    }
                                 }
                                 "pragma" => {
                                     // Handle `pragma` directive.
                                     let pragma = self.parse_pragma()?;
-                                    Statement::Pragma(pragma, directive_range)
+                                    Statement::Pragma {
+                                        pragma,
+                                        directive_range,
+                                    }
                                 }
                                 "line" | "ident" | "sccs" | "assert" | "unassert"
                                 | "include_next" => {
@@ -362,53 +389,60 @@ impl Parser<'_> {
 
         // Collect parameter names.
         // The parameter name for the variadic macro is "...".
-        let parse_parameters = |parser: &mut Parser| -> Result<Vec<String>, PreprocessError> {
-            let mut parameters = vec![];
+        let parse_parameters =
+            |parser: &mut Parser| -> Result<Vec<FunctionParameter>, PreprocessError> {
+                let mut parameters = vec![];
 
-            parser.consume_opening_parenthesis()?; // consumes '('
+                parser.consume_opening_parenthesis()?; // consumes '('
 
-            while let Some(token) = parser.peek_token(0) {
-                match token {
-                    Token::Identifier(id) => {
-                        parameters.push(id.clone());
-                        parser.next_token(); // consume identifier
+                while let Some(token) = parser.peek_token(0) {
+                    match token {
+                        Token::Identifier(id) => {
+                            parameters.push(FunctionParameter::Identifier(id.clone()));
+                            parser.next_token(); // consume identifier
+                        }
+                        Token::Punctuator(Punctuator::Ellipsis) => {
+                            parameters.push(FunctionParameter::Variadic);
+                            parser.next_token(); // consume '...'
+                        }
+                        Token::Punctuator(Punctuator::ParenthesisClose) => {
+                            break;
+                        }
+                        _ => {
+                            return Err(PreprocessError::MessageWithPosition(
+                                "Expected an identifier in macro parameters.".to_owned(),
+                                parser.peek_range(0).unwrap().start,
+                            ));
+                        }
                     }
-                    Token::Punctuator(Punctuator::Ellipsis) => {
-                        parameters.push("...".to_owned());
-                        parser.next_token(); // consume '...'
-                    }
-                    Token::Punctuator(Punctuator::ParenthesisClose) => {
+
+                    if !parser.peek_token_and_equals(0, &Token::Punctuator(Punctuator::Comma)) {
                         break;
                     }
-                    _ => {
+
+                    // If the last parameter is variadic, it must be the last one, we should break the loop here.
+                    if parameters.last() == Some(&FunctionParameter::Variadic) {
+                        break;
+                    }
+
+                    parser.next_token(); // consumes comma
+
+                    // If we have a comma, we expect another identifier next.
+                    if parser
+                        .peek_token_and_equals(0, &Token::Punctuator(Punctuator::ParenthesisClose))
+                    {
                         return Err(PreprocessError::MessageWithPosition(
-                            "Expected an identifier in macro parameters.".to_owned(),
+                            "Expected an identifier after the comma in macro parameter list."
+                                .to_owned(),
                             parser.peek_range(0).unwrap().start,
                         ));
                     }
                 }
 
-                if !parser.peek_token_and_equals(0, &Token::Punctuator(Punctuator::Comma)) {
-                    break;
-                }
+                parser.consume_closing_parenthesis()?; // consumes ')'
 
-                parser.next_token(); // consumes comma
-
-                // If we have a comma, we expect another identifier next.
-                if parser.peek_token_and_equals(0, &Token::Punctuator(Punctuator::ParenthesisClose))
-                {
-                    return Err(PreprocessError::MessageWithPosition(
-                        "Expected an identifier after the comma in macro parameter list."
-                            .to_owned(),
-                        parser.peek_range(0).unwrap().start,
-                    ));
-                }
-            }
-
-            parser.consume_closing_parenthesis()?; // consumes ')'
-
-            Ok(parameters)
-        };
+                Ok(parameters)
+            };
 
         let parse_balanced_definition =
             |parser: &mut Parser| -> Result<Vec<TokenWithRange>, PreprocessError> {
@@ -508,7 +542,8 @@ impl Parser<'_> {
                 self.consume_directive_end_or_eof()?;
 
                 Define::ObjectLike {
-                    identifier: (name, range),
+                    identifier: name,
+                    identifier_range: range,
                     definition,
                 }
             }
@@ -523,7 +558,8 @@ impl Parser<'_> {
                 self.consume_directive_end_or_eof()?;
 
                 Define::FunctionLike {
-                    identifier: (name, range),
+                    identifier: name,
+                    identifier_range: range,
                     parameters,
                     definition,
                 }
@@ -654,7 +690,7 @@ impl Parser<'_> {
         // ```
 
         let mut branches: Vec<Branch> = vec![];
-        let mut alternative: Option<(Vec<Statement>, Range)> = None;
+        let mut alternative = None;
 
         let collect_expression =
             |parser: &mut Parser| -> Result<Vec<TokenWithRange>, PreprocessError> {
@@ -741,7 +777,10 @@ impl Parser<'_> {
 
                     self.consume_directive_end_or_eof()?;
 
-                    let condition = Condition::Defined(identifier, range);
+                    let condition = Condition::Defined {
+                        identifier,
+                        directive_range: range,
+                    };
                     let consequence = collect_consequence(self)?;
                     branches.push(Branch {
                         condition,
@@ -756,7 +795,10 @@ impl Parser<'_> {
 
                     self.consume_directive_end_or_eof()?;
 
-                    let condition = Condition::NotDefined(identifier, range);
+                    let condition = Condition::NotDefined {
+                        identifier,
+                        directive_range: range,
+                    };
                     let consequence = collect_consequence(self)?;
                     branches.push(Branch {
                         condition,
@@ -790,11 +832,14 @@ impl Parser<'_> {
             self.next_token(); // consumes '#'
             self.next_token(); // consumes "else"
 
-            let else_directive_range = self.last_range;
+            let directive_else_range = self.last_range;
             self.consume_directive_end()?;
 
             let alternative_statements = collect_consequence(self)?;
-            alternative = Some((alternative_statements, else_directive_range));
+            alternative = Some(AlternativeBranch {
+                statements: alternative_statements,
+                directive_range: directive_else_range,
+            });
         }
 
         // Finally, we expect an `#endif` to close the `if` block.
@@ -1043,6 +1088,19 @@ mod tests {
                     index: 14,
                     line: 0,
                     column: 14
+                }
+            ))
+        ));
+
+        // Error: arguments after variadic parameter
+        assert!(matches!(
+            parse_from_str("#define FOO(..., a, b) a, b"),
+            Err(PreprocessError::MessageWithPosition(
+                _,
+                Position {
+                    index: 15,
+                    line: 0,
+                    column: 15
                 }
             ))
         ));
@@ -1398,11 +1456,11 @@ mod tests {
         assert_eq!(
             parse_from_str("#error \"foobar\"").unwrap(),
             Program {
-                statements: vec![Statement::Error(
-                    "foobar".to_owned(),
-                    Range::from_detail(1, 0, 1, 5),
-                    Range::from_detail(7, 0, 7, 8)
-                )],
+                statements: vec![Statement::Error {
+                    message: "foobar".to_owned(),
+                    directive_range: Range::from_detail(1, 0, 1, 5),
+                    message_range: Range::from_detail(7, 0, 7, 8)
+                }],
             }
         );
 
@@ -1438,11 +1496,11 @@ mod tests {
         assert_eq!(
             parse_from_str("#warning \"foobar\"").unwrap(),
             Program {
-                statements: vec![Statement::Warning(
-                    "foobar".to_owned(),
-                    Range::from_detail(1, 0, 1, 7),
-                    Range::from_detail(9, 0, 9, 8)
-                )],
+                statements: vec![Statement::Warning {
+                    message: "foobar".to_owned(),
+                    directive_range: Range::from_detail(1, 0, 1, 7),
+                    message_range: Range::from_detail(9, 0, 9, 8)
+                }],
             }
         );
 

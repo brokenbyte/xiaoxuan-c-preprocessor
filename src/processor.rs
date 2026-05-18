@@ -13,19 +13,22 @@ use std::{
 use chrono::Local;
 
 use crate::{
-    ast::{Branch, Condition, Define, If, Pragma, Program, Statement},
+    ast::{Branch, Condition, Define, FunctionParameter, If, Pragma, Program, Statement},
+    consts::{
+        COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS,
+        COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE, LINT_SUPPRESS_DIRECTIVE_WARN,
+        LINT_SUPPRESS_IDENTICAL_REDEFINITION, LINT_SUPPRESS_INCLUDE_GUARD_ABSENT,
+        LINT_SUPPRESS_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS,
+        LINT_SUPPRESS_TRADITIONAL_INCLUDE_GUARD, LINT_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD,
+        LINT_SUPPRESS_UNDEF_NONEXISTENT_MACRO,
+    },
     context::{
-        Context, FileItem, FileLocation, FilePathResolveResult, FilePathSource, FileProvider,
-        HeaderFileCache, MacroDefinition, MacroManipulationResult, PreprocessResult,
+        AddMacroResult, Context, FileItem, FileLocation, FilePathResolveResult, FilePathSource,
+        FileProvider, HeaderFileCache, MacroDefinition, PreprocessResult, RemoveMacroResult,
     },
     error::{PreprocessError, PreprocessFileError},
     expression::evaluate,
-    linter::{
-        LINT_SUPPRESS_DIRECTIVE_WARN,
-        LINT_SUPPRESS_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS,
-        LINT_SUPPRESS_PRAGMA_ONCE_ABSENT, LINT_SUPPRESS_PREFER_PRAGMA_ONCE,
-        LINT_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD, Lint, LintLevel,
-    },
+    linter::{Lint, LintLevel},
     location::Location,
     parser::parse_from_str,
     peekable_iter::PeekableIter,
@@ -35,44 +38,6 @@ use crate::{
         TokenWithLocation, TokenWithRange,
     },
 };
-
-// This flag controls whether to resolve file paths that are relative to the current file.
-//
-// By default, ANCPP only resolves header and resource files located in the user and
-// system directories specified in the `FileProvider`, this strategy improves
-// consistency and security.
-//
-// For example, consider there are 3 defined include directories:
-//
-// - `./include`
-// - `./src/headers`
-// - `/usr/include`
-//
-// The statement `#include "foo.h"` in the source file `src/main.c` will try to
-// match `foo.h` in the following order:
-//
-// - `./include/foo.h`
-// - `./src/headers/foo.h`
-// - `/usr/include/foo.h`
-//
-// If this flag is set to `true`, then it will also try to match `src/foo.h`,
-// which is relative to the current file `src/main.c`.
-//
-// Most C compilers, such as GCC and Clang (LLVM), resolve relative paths which is
-// related to the current file being compiled. If you want to match this behavior,
-// set this flag to `true`.
-pub const COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE: &str =
-    "resolve_header_file_relative_to_current_file";
-
-// By default, ANCPP requires each macro invocation argument to be a single token
-// (identifier, number, string literal, character literal, or punctuator).
-// If this flag is set to `true`, an argument may be an arbitrary sequence of tokens,
-// allowing more complex expressions to be passed as a single parameter,
-// but it may lead to unexpected behaviors, especially when the arguments
-// have side effects or involve complex expressions.
-// It is recommended to keep this flag disabled.
-pub const COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS: &str =
-    "macro_invocation_single_argument_multiple_tokens";
 
 /// Extra operators supported in conditional directives.
 ///
@@ -273,20 +238,38 @@ where
 
     fn process_statement(&mut self, statement: &Statement) -> Result<(), PreprocessFileError> {
         match statement {
-            Statement::Define(define, range) => self.process_define(define, range),
-            Statement::Undef(identifier, directive_range, identifier_range) => {
-                self.process_undefine(identifier, directive_range, identifier_range)
-            }
-            Statement::Include(components, range) => self.process_include(components, range),
-            Statement::Embed(components, range) => self.process_embed(components, range),
+            Statement::Define {
+                define,
+                directive_range,
+            } => self.process_define(define, directive_range),
+            Statement::Undef {
+                identifier,
+                directive_range,
+                identifier_range,
+            } => self.process_undefine(identifier, directive_range, identifier_range),
+            Statement::Include {
+                components,
+                directive_range,
+            } => self.process_include(components, directive_range),
+            Statement::Embed {
+                components,
+                directive_range,
+            } => self.process_embed(components, directive_range),
             Statement::If(if_) => self.process_if(if_),
-            Statement::Error(message, directive_range, message_range) => {
-                self.process_error(message, directive_range, message_range)
-            }
-            Statement::Warning(message, directive_range, message_range) => {
-                self.process_warnning(message, directive_range, message_range)
-            }
-            Statement::Pragma(pragma, range) => self.process_pragma(pragma, range),
+            Statement::Error {
+                message,
+                directive_range,
+                message_range,
+            } => self.process_error(message, directive_range, message_range),
+            Statement::Warning {
+                message,
+                directive_range,
+                message_range,
+            } => self.process_warnning(message, directive_range, message_range),
+            Statement::Pragma {
+                pragma,
+                directive_range,
+            } => self.process_pragma(pragma, directive_range),
             Statement::Code(token_with_ranges) => self.process_code(token_with_ranges),
         }
     }
@@ -298,7 +281,8 @@ where
     ) -> Result<(), PreprocessFileError> {
         match define {
             Define::ObjectLike {
-                identifier: (name, range),
+                identifier: name,
+                identifier_range: range,
                 definition,
             } => {
                 if name == "defined" {
@@ -330,18 +314,38 @@ where
                     definition,
                 );
 
-                if add_result == MacroManipulationResult::AlreadyExist {
-                    return Err(PreprocessFileError {
-                        file_number: self.context.current_file_item.number,
-                        error: PreprocessError::MessageWithRange(
-                            format!("Macro '{}' already exists.", name),
+                match add_result {
+                    AddMacroResult::AlreadyExist => {
+                        return Err(PreprocessFileError {
+                            file_number: self.context.current_file_item.number,
+                            error: PreprocessError::MessageWithRange(
+                                format!("Macro '{}' already exists.", name),
+                                *range,
+                            ),
+                        });
+                    }
+                    AddMacroResult::IdenticalDefinitionAlreadyExist => {
+                        // lint
+                        let lint = Lint::MessageWithRange(
+                            LintLevel::Info,
+                            LINT_SUPPRESS_IDENTICAL_REDEFINITION.to_string(),
+                            self.context.current_file_item.number,
+                            format!(
+                                "Macro '{}' is redefined with an identical definition.",
+                                name
+                            ),
                             *range,
-                        ),
-                    });
+                        );
+                        self.add_lint_with_suppression_check(lint);
+                    }
+                    _ => {
+                        // do nothing
+                    }
                 }
             }
             Define::FunctionLike {
-                identifier: (name, range),
+                identifier: name,
+                identifier_range: range,
                 parameters,
                 definition,
             } => {
@@ -375,14 +379,33 @@ where
                     definition,
                 );
 
-                if result == MacroManipulationResult::AlreadyExist {
-                    return Err(PreprocessFileError {
-                        file_number: self.context.current_file_item.number,
-                        error: PreprocessError::MessageWithRange(
-                            format!("Macro '{}' has already been defined.", name),
+                match result {
+                    AddMacroResult::AlreadyExist => {
+                        return Err(PreprocessFileError {
+                            file_number: self.context.current_file_item.number,
+                            error: PreprocessError::MessageWithRange(
+                                format!("Macro '{}' already exists.", name),
+                                *range,
+                            ),
+                        });
+                    }
+                    AddMacroResult::IdenticalDefinitionAlreadyExist => {
+                        // lint
+                        let lint = Lint::MessageWithRange(
+                            LintLevel::Info,
+                            LINT_SUPPRESS_IDENTICAL_REDEFINITION.to_string(),
+                            self.context.current_file_item.number,
+                            format!(
+                                "Macro '{}' is redefined with an identical definition.",
+                                name
+                            ),
                             *range,
-                        ),
-                    });
+                        );
+                        self.add_lint_with_suppression_check(lint);
+                    }
+                    _ => {
+                        // do nothing
+                    }
                 }
             }
         }
@@ -398,14 +421,15 @@ where
     ) -> Result<(), PreprocessFileError> {
         let result = self.context.macro_map.remove(identifier);
 
-        if result == MacroManipulationResult::NotFound {
-            return Err(PreprocessFileError {
-                file_number: self.context.current_file_item.number,
-                error: PreprocessError::MessageWithRange(
-                    format!("Macro '{}' is not defined.", identifier),
-                    *identifier_range,
-                ),
-            });
+        if result == RemoveMacroResult::NotFound {
+            let lint = Lint::MessageWithRange(
+                LintLevel::Warn,
+                LINT_SUPPRESS_UNDEF_NONEXISTENT_MACRO.to_string(),
+                self.context.current_file_item.number,
+                format!("Macro '{}' is not defined.", identifier),
+                *identifier_range,
+            );
+            self.add_lint_with_suppression_check(lint);
         }
 
         Ok(())
@@ -468,7 +492,7 @@ where
             match self.context.file_provider.resolve_user_file_with_fallback(
                 &include_resolve_result.file_path,
                 &self.context.current_file_item.location.canonical_full_path,
-                self.context.is_compile_feature_enabled(
+                self.is_compile_feature_enabled(
                     COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE,
                 ),
             ) {
@@ -477,7 +501,7 @@ where
                     is_system_file,
                 }) => (canonical_full_path, is_system_file),
                 None => {
-                    let msg = if self.context.is_compile_feature_enabled(
+                    let msg = if self.is_compile_feature_enabled(
                         COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE,
                     ) {
                         format!(
@@ -657,7 +681,7 @@ where
             match self.context.file_provider.resolve_user_file_with_fallback(
                 &embed_resolve_result.file_path,
                 &self.context.current_file_item.location.canonical_full_path,
-                self.context.is_compile_feature_enabled(
+                self.is_compile_feature_enabled(
                     COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE,
                 ),
             ) {
@@ -666,7 +690,7 @@ where
                     is_system_file,
                 }) => (canonical_full_path, is_system_file),
                 None => {
-                    let msg = if self.context.is_compile_feature_enabled(
+                    let msg = if self.is_compile_feature_enabled(
                         COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE,
                     ) {
                         format!(
@@ -780,7 +804,7 @@ where
         for branch in &if_.branches {
             // Evaluate the condition of the branch.
             let evaluate_result: isize = match &branch.condition {
-                Condition::Defined(identifier, _) => {
+                Condition::Defined { identifier, .. } => {
                     if self.context.macro_map.contains_key(identifier)
                         || EXTRA_OPERATORS.contains(&identifier.as_str())
                     {
@@ -789,7 +813,7 @@ where
                         0
                     }
                 }
-                Condition::NotDefined(identifier, _) => {
+                Condition::NotDefined { identifier, .. } => {
                     if self.context.macro_map.contains_key(identifier)
                         || EXTRA_OPERATORS.contains(&identifier.as_str())
                     {
@@ -838,8 +862,8 @@ where
 
         if !hit_branch {
             // If no branch was true, process the alternative if it exists.
-            if let Some((alternative_statements, _)) = &if_.alternative {
-                for statement in alternative_statements {
+            if let Some(alternative) = &if_.alternative {
+                for statement in &alternative.statements {
                     self.process_statement(statement)?;
                 }
             }
@@ -879,7 +903,7 @@ where
             *message_range,
         );
 
-        self.context.lints.push(lint);
+        self.add_lint_with_suppression_check(lint);
         Ok(())
     }
 
@@ -962,7 +986,7 @@ where
         // If the macro is variadic, the last parameter name is `...`.
         //
         // For non-function-like macros, this map is empty.
-        parameter_names: &[String],
+        parameters: &[FunctionParameter],
 
         // The actual arguments of function-like macros invocations.
         // All values should be the expanded first.
@@ -985,7 +1009,7 @@ where
         // If we are expanding a function-like macro definition,
         // substitute the parameters first.
         let mut output = if expansion_type == ExpansionType::FunctionLikeDefinition {
-            self.substitute_macro_parameters(parameter_names, actual_arguments, body)?
+            self.substitute_macro_parameters(parameters, actual_arguments, body)?
         } else {
             body
         };
@@ -1009,7 +1033,7 @@ where
     /// Invoke this function only when expanding a function-like macro definition.
     fn substitute_macro_parameters(
         &mut self,
-        parameter_names: &[String],
+        parameter: &[FunctionParameter],
         actual_arguments: &[Argument],
         body: Vec<TokenWithLocation>,
     ) -> Result<Vec<TokenWithLocation>, PreprocessFileError> {
@@ -1110,7 +1134,9 @@ where
                                     }
                                     _ => {
                                         let parameter_index_opt =
-                                            parameter_names.iter().position(|p| p == name);
+                                            parameter.iter().position(|p|
+                                                matches!(p, FunctionParameter::Identifier(param_name) if param_name == name)
+                                            );
 
                                         match parameter_index_opt {
                                             Some(parameter_index) => {
@@ -1218,7 +1244,7 @@ where
                             // https://en.cppreference.com/w/c/preprocessor/replace.html
 
                             // Defence: __VA_ARGS__ can only be used in variadic function-like macros.
-                            if !matches!(parameter_names.last(), Some(param) if param == "...") {
+                            if !matches!(parameter.last(), Some(FunctionParameter::Variadic)) {
                                 return Err(PreprocessFileError {
                                     file_number: current_token_with_location.location.file_number,
                                     error: PreprocessError::MessageWithRange(
@@ -1258,7 +1284,7 @@ where
                             // and expands to nothing otherwise.
 
                             // Defence: __VA_OPT__ can only be used in variadic function-like macros.
-                            if !matches!(parameter_names.last(), Some(param) if param == "...") {
+                            if !matches!(parameter.last(), Some(FunctionParameter::Variadic)) {
                                 return Err(PreprocessFileError {
                                     file_number: current_token_with_location.location.file_number,
                                     error: PreprocessError::MessageWithRange(
@@ -1313,7 +1339,7 @@ where
                             // `__VA_OPT__( content )` is only expanded if variadic arguments are provided.
                             if !argument_values.is_empty() {
                                 let expanded_tokens = self.substitute_macro_parameters(
-                                    parameter_names,
+                                    parameter,
                                     actual_arguments,
                                     components,
                                 )?;
@@ -1324,8 +1350,9 @@ where
                         _ => {
                             // Process regular identifiers.
 
-                            let parameter_index_opt =
-                                parameter_names.iter().position(|p| p == name);
+                            let parameter_index_opt = parameter.iter().position(|p|
+                                matches!(p, FunctionParameter::Identifier(param_name) if param_name == name)
+                            );
 
                             match parameter_index_opt {
                                 // The identifier is a parameter.
@@ -1374,7 +1401,7 @@ where
                                     // ```
 
                                     // Defence: __VA_ARGS__ can only be used in variadic function-like macros.
-                                    if !matches!(parameter_names.last(), Some(param) if param == "...")
+                                    if !matches!(parameter.last(), Some(FunctionParameter::Variadic))
                                     {
                                         return Err(PreprocessFileError {
                                             file_number: next_token_with_location.location.file_number,
@@ -1405,7 +1432,9 @@ where
                                     // Stringizing regular parameter.
 
                                     let parameter_index_opt =
-                                        parameter_names.iter().position(|p| p == name);
+                                        parameter.iter().position(|p|
+                                            matches!(p, FunctionParameter::Identifier(param_name) if param_name == name)
+                                        );
 
                                     match parameter_index_opt {
                                         // Found the parameter to be stringized.
@@ -1946,7 +1975,6 @@ where
                                         if multiple_tokens_argument_found {
                                             // Check `enable_macro_single_argument_multiple_tokens` flag
                                             if self
-                                            .context
                                             .is_compile_feature_enabled(COMPILE_FEATURE_MACRO_INVOCATION_SINGLE_ARGUMENT_MULTIPLE_TOKENS)
                                             {
                                                 let lint = Lint::MessageWithRange(
@@ -1959,7 +1987,7 @@ where
                                                     current_token_with_location
                                                         .location
                                                         .range);
-                                                self.context.lints.push(lint);
+                                                self.add_lint_with_suppression_check(lint);
 
                                             }else {
                                                 return Err(PreprocessFileError {
@@ -2007,34 +2035,39 @@ where
                                         // Assemble the arguments according to the function parameters.
                                         let mut arguments = vec![];
                                         for function_parameter in &function_parameters {
-                                            if function_parameter == "..." {
-                                                // Variadic parameter
-                                                // Collect the rest arguments
-                                                let rest = std::mem::take(&mut argument_values); // argument_values.drain(0..).collect();
-                                                arguments.push(Argument::Rest(rest));
-                                                break;
-                                            } else {
-                                                // Regular parameter
-                                                if argument_values.is_empty() {
-                                                    return Err(PreprocessFileError {
-                                                        file_number: current_token_with_location
-                                                            .location
-                                                            .file_number,
-                                                        error: PreprocessError::MessageWithRange(
-                                                            format!(
-                                                                "Not enough arguments provided for macro '{}'.",
-                                                                name
-                                                            ),
-                                                            current_token_with_location
-                                                                .location
-                                                                .range,
-                                                        ),
-                                                    });
-                                                }
+                                            match function_parameter {
+                                                FunctionParameter::Identifier(_) => {
+                                                    // Regular parameter
+                                                    if argument_values.is_empty() {
+                                                        return Err(PreprocessFileError {
+                                                            file_number:
+                                                                current_token_with_location
+                                                                    .location
+                                                                    .file_number,
+                                                            error:
+                                                                PreprocessError::MessageWithRange(
+                                                                    format!(
+                                                                        "Not enough arguments provided for macro '{}'.",
+                                                                        name
+                                                                    ),
+                                                                    current_token_with_location
+                                                                        .location
+                                                                        .range,
+                                                                ),
+                                                        });
+                                                    }
 
-                                                arguments.push(Argument::Position(
-                                                    argument_values.remove(0),
-                                                ));
+                                                    arguments.push(Argument::Position(
+                                                        argument_values.remove(0),
+                                                    ));
+                                                }
+                                                FunctionParameter::Variadic => {
+                                                    // Variadic parameter
+                                                    // Collect the rest arguments
+                                                    let rest = std::mem::take(&mut argument_values); // argument_values.drain(0..).collect();
+                                                    arguments.push(Argument::Rest(rest));
+                                                    break;
+                                                }
                                             }
                                         }
 
@@ -2252,7 +2285,7 @@ where
                                             .current_file_item
                                             .location
                                             .canonical_full_path,
-                                        self.context
+                                        self
                                             .is_compile_feature_enabled(COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE),
                                     )
                                     .is_some()
@@ -2394,7 +2427,7 @@ where
                                             .current_file_item
                                             .location
                                             .canonical_full_path,
-                                        self.context
+                                        self
                                             .is_compile_feature_enabled(COMPILE_FEATURE_RESOLVE_HEADER_FILE_RELATIVE_TO_CURRENT_FILE)
                                     )
                                     .map_or(
@@ -2935,13 +2968,14 @@ where
 
         if first_statement_opt.is_none() {
             // File is empty
-            self.context.lints.push(Lint::Message(
+            let lint = Lint::Message(
                 LintLevel::Warn,
-                LINT_SUPPRESS_PRAGMA_ONCE_ABSENT.to_string(),
+                LINT_SUPPRESS_INCLUDE_GUARD_ABSENT.to_string(),
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
                     .to_string(),
-            ));
+            );
+            self.add_lint_with_suppression_check(lint);
             return;
         }
 
@@ -2949,7 +2983,10 @@ where
 
         if matches!(
             first_statement,
-            Statement::Pragma(Pragma { components}, _)
+            Statement::Pragma {
+                pragma: Pragma { components },
+                directive_range: _
+            }
             if matches!(
                 components.first(),
                 Some(TokenWithRange { token: Token::Identifier(name), .. }) if name == "once"))
@@ -2988,15 +3025,16 @@ where
                 matches!(
                     branches.first().unwrap(),
                     Branch {
-                        condition: Condition::NotDefined(name0, _),
+                        condition: Condition::NotDefined { identifier: name0, directive_range: _ },
                         consequence,
                         ..
                     } if matches!(
                         consequence.first(),
-                        Some(Statement::Define(Define::ObjectLike {
-                            identifier: (name1, _),
+                        Some(Statement::Define{define: Define::ObjectLike {
+                            identifier: name1,
+                            identifier_range: _,
                             definition,
-                        }, _)) if name0 == name1 && definition.is_empty()
+                        }, ..}) if name0 == name1 && definition.is_empty()
                     )
                 )
             )
@@ -3007,7 +3045,11 @@ where
 
             let branch = branches.first().unwrap();
 
-            let Condition::NotDefined(name, range) = &branch.condition else {
+            let Condition::NotDefined {
+                identifier: name,
+                directive_range: range,
+            } = &branch.condition
+            else {
                 unreachable!()
             };
 
@@ -3016,17 +3058,18 @@ where
                 // The include guard macro name matches the suggested name.
 
                 // Suggest using `#pragma once`:
-                self.context.lints.push(Lint::Message(
+                let lint = Lint::Message(
                     LintLevel::Info,
-                    LINT_SUPPRESS_PREFER_PRAGMA_ONCE.to_string(),
+                    LINT_SUPPRESS_TRADITIONAL_INCLUDE_GUARD.to_string(),
                     file_number_of_header_file,
                     "Consider using `#pragma once` for better practice.".to_owned(),
-                ));
+                );
+                self.add_lint_with_suppression_check(lint);
             } else {
                 // The include guard macro name does not match the suggested name.
                 // Suggest renaming the include guard macro to follow the convention, which
                 // prevents potential conflicts with other macros.
-                self.context.lints.push(Lint::MessageWithRange(
+                let lint = Lint::MessageWithRange(
                     LintLevel::Info,
                     LINT_SUPPRESS_UNCONVENTIONAL_INCLUDE_GUARD.to_string(),
                     file_number_of_header_file,
@@ -3035,18 +3078,20 @@ where
                         suggested_include_guard_macro_name
                     ),
                     *range,
-                ));
+                );
+                self.add_lint_with_suppression_check(lint);
             }
         } else {
             // The file does not have an include guard or `#pragma once`.
             // We suggest adding `#pragma once`.
-            self.context.lints.push(Lint::Message(
+            let lint = Lint::Message(
                 LintLevel::Warn,
-                LINT_SUPPRESS_PRAGMA_ONCE_ABSENT.to_string(),
+                LINT_SUPPRESS_INCLUDE_GUARD_ABSENT.to_string(),
                 file_number_of_header_file,
                 "Consider adding `#pragma once` to this file to prevent multiple inclusions."
                     .to_owned(),
-            ));
+            );
+            self.add_lint_with_suppression_check(lint);
         }
     }
 
@@ -3093,6 +3138,34 @@ where
         self.context.current_file_item = last_context_file_item;
 
         Ok(())
+    }
+
+    fn is_compile_feature_enabled(&self, feature_name: &str) -> bool {
+        // The absent of a feature in this set is equivalent to the feature being set to false.
+        self.context
+            .compile_features
+            .get(feature_name)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    fn is_lint_suppressed(&self, lint_name: &str) -> bool {
+        // The set of lints to be suppressed during preprocessing.
+        self.context.suppress_lints.contains(lint_name)
+    }
+
+    fn add_lint_with_suppression_check(&mut self, lint: Lint) {
+        let name = match &lint {
+            Lint::Message(_, name, _, _) => name,
+            Lint::MessageWithRange(_, name, _, _, _) => name,
+            Lint::MessageWithPosition(_, name, _, _, _) => name,
+        };
+
+        if self.is_lint_suppressed(name) {
+            return;
+        }
+
+        self.context.lints.push(lint);
     }
 }
 
@@ -3447,7 +3520,10 @@ mod tests {
     };
 
     use crate::{
-        FILE_NUMBER_SOURCE_FILE_BEGIN,
+        consts::{
+            C23_KEYWORD_STRS, FILE_NUMBER_SOURCE_FILE_BEGIN, LINT_SUPPRESS_IDENTICAL_REDEFINITION,
+            LINT_SUPPRESS_UNDEF_NONEXISTENT_MACRO,
+        },
         context::HeaderFileCache,
         error::{PreprocessError, PreprocessFileError},
         linter::{Lint, LintLevel},
@@ -3459,10 +3535,7 @@ mod tests {
             process_source_file,
         },
         range::Range,
-        token::{
-            C23_KEYWORD_STRS, IntegerNumber, IntegerNumberWidth, Number, Punctuator, Token,
-            TokenWithLocation,
-        },
+        token::{IntegerNumber, IntegerNumberWidth, Number, Punctuator, Token, TokenWithLocation},
     };
 
     // A helper function to process source code with predefinitions and return the full result, including output tokens and lints.
@@ -3772,40 +3845,36 @@ FOO 11 BAR",
             "\"巴拉巴拉呣呣\" 11 \"巴拉巴拉呣呣\""
         );
 
+        // Redefine with same definition
+        assert!(matches!(
+                process_with_predefinitions_and_result(
+                    "\
+#define FOO 'a'
+#define FOO 'a'",
+                    &HashMap::new(),
+                ),
+                Ok(PreprocessResult {
+                    lints,
+                    ..
+                })
+                if matches!(
+                    lints.as_slice(),
+                    [Lint::MessageWithRange(
+                        LintLevel::Info,
+                        name,
+                        _,
+                        _,
+                        range
+                    )] if name == LINT_SUPPRESS_IDENTICAL_REDEFINITION && range == &Range::from_detail(24, 1, 8, 3)
+                )
+        ));
+
         // Error: Redefine without undefine
         assert!(matches!(
             process_with_predefinitions_and_result(
                 "\
 #define FOO 'a'
 #define FOO 'b'",
-                &HashMap::new(),
-            ),
-            Err(PreprocessFileError {
-                file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
-                error: PreprocessError::MessageWithRange(
-                    _,
-                    Range {
-                        start: Position {
-                            index: 24,
-                            line: 1,
-                            column: 8
-                        },
-                        end_inclusive: Position {
-                            index: 26,
-                            line: 1,
-                            column: 10
-                        }
-                    }
-                )
-            })
-        ));
-
-        // Error: Redefine with same definition
-        assert!(matches!(
-            process_with_predefinitions_and_result(
-                "\
-#define FOO 'a'
-#define FOO 'a'",
                 &HashMap::new(),
             ),
             Err(PreprocessFileError {
@@ -3885,7 +3954,7 @@ A",
         );
         assert_eq!(print_tokens(&tokens), "456");
 
-        // Error: undefine non-existing macro
+        // Warn: undefine non-existing macro
         assert!(matches!(
             process_with_predefinitions_and_result(
                 "\
@@ -3893,24 +3962,19 @@ A",
 ",
                 &HashMap::new(),
             ),
-            Err(PreprocessFileError {
-                file_number: FILE_NUMBER_SOURCE_FILE_BEGIN,
-                error: PreprocessError::MessageWithRange(
+            Ok(PreprocessResult {
+                lints,
+                ..
+            }) if matches!(
+                lints.as_slice(),
+                [Lint::MessageWithRange(
+                    LintLevel::Warn,
+                    name,
                     _,
-                    Range {
-                        start: Position {
-                            index: 7,
-                            line: 0,
-                            column: 7
-                        },
-                        end_inclusive: Position {
-                            index: 10,
-                            line: 0,
-                            column: 10
-                        }
-                    }
-                )
-            })
+                    _,
+                    range
+                )] if name == LINT_SUPPRESS_UNDEF_NONEXISTENT_MACRO && range == &Range::from_detail(7, 0, 7, 4)
+            )
         ));
     }
 
@@ -3963,12 +4027,35 @@ FOO(a) BAR(b) BUZZ(c)"#,
         );
         assert_eq!(print_tokens(&tokens), "FOO ( a ) BAR ( b ) BUZZ ( c )");
 
+        // redefine with same definition
+        assert!(matches!(
+            process_with_predefinitions_and_result(
+                "\
+#define FOO(x,y) x + y
+#define FOO(left, right) left + right",
+                &predefinitions
+            ),
+            Ok(PreprocessResult {
+                lints,
+                ..
+            }) if matches!(
+                lints.as_slice(),
+                [Lint::MessageWithRange(
+                    LintLevel::Info,
+                    name,
+                    _,
+                    _,
+                    range
+                )] if name == LINT_SUPPRESS_IDENTICAL_REDEFINITION && range == &Range::from_detail(31, 1, 8, 3)
+            )
+        ));
+
         // Error: redefine function-like macro
         assert!(matches!(
             process_with_predefinitions_and_result(
                 "\
 #define FOO(x) x
-#define FOO(y) y",
+#define FOO(x) (x) + 1",
                 &predefinitions
             ),
             Err(PreprocessFileError {

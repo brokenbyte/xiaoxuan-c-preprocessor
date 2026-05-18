@@ -10,13 +10,13 @@ use std::{
 };
 
 use crate::{
-    FILE_NUMBER_PREDEFINED,
-    ast::Program,
+    ast::{FunctionParameter, Program},
+    consts::FILE_NUMBER_PREDEFINED,
     error::PreprocessError,
     lexer::lex_from_clean_str,
     linter::Lint,
     location::Location,
-    token::{TokenWithLocation, TokenWithRange},
+    token::{Token, TokenWithLocation, TokenWithRange},
 };
 
 /// The `Context` struct holds all state required during preprocessing.
@@ -35,7 +35,7 @@ where
 
     /// Identifiers which are used to prevent defining macros with these names.
     /// They are usually C keywords, such as `int`, `return`, `if`, `else`, etc.
-    /// You may simply use `token::C23_KEYWORD_STRS`.
+    /// You may simply use `consts::C23_KEYWORD_STRS`.
     pub reserved_identifiers: &'a [&'a str],
 
     pub compile_features: &'a HashMap<String, bool>,
@@ -134,19 +134,6 @@ where
             .iter()
             .any(|file| file.canonical_full_path == canonical_full_path)
     }
-
-    pub fn is_compile_feature_enabled(&self, feature_name: &str) -> bool {
-        // The absent of a feature in this set is equivalent to the feature being set to false.
-        self.compile_features
-            .get(feature_name)
-            .copied()
-            .unwrap_or(false)
-    }
-
-    pub fn is_lint_suppressed(&self, lint_name: &str) -> bool {
-        // The set of lints to be suppressed during preprocessing.
-        self.suppress_lints.contains(lint_name)
-    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -216,13 +203,25 @@ pub struct MacroMap {
 #[derive(Debug, PartialEq, Clone)]
 pub enum MacroDefinition {
     ObjectLike(Vec<TokenWithLocation>),
-    FunctionLike(Vec<String>, Vec<TokenWithLocation>),
+    FunctionLike(
+        // The parameter names.
+        // If the macro is variadic, the last parameter name is `...`.
+        Vec<FunctionParameter>,
+        // The macro definition tokens with locations.
+        Vec<TokenWithLocation>,
+    ),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum MacroManipulationResult {
+pub enum AddMacroResult {
     Success,
     AlreadyExist,
+    IdenticalDefinitionAlreadyExist, // macro type and definition are identical to an existing one
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum RemoveMacroResult {
+    Success,
     NotFound,
 }
 
@@ -466,7 +465,7 @@ impl MacroMap {
         let mut macros = Self::new();
         for (key, value) in predefinitions {
             if macros.add_object_like_by_single_value_string(key, value)?
-                == MacroManipulationResult::AlreadyExist
+                == AddMacroResult::AlreadyExist
             {
                 return Err(PreprocessError::Message(format!(
                     "Macro '{}' is already exist.",
@@ -497,7 +496,7 @@ impl MacroMap {
         &mut self,
         key: &str,
         value: &str,
-    ) -> Result<MacroManipulationResult, PreprocessError> {
+    ) -> Result<AddMacroResult, PreprocessError> {
         // Tokenize the value and create TokenWithLocation instances.
         let tokens = lex_from_clean_str(value)?;
         let token_with_locations: Vec<TokenWithLocation> = tokens
@@ -519,8 +518,8 @@ impl MacroMap {
         let item = MacroDefinition::ObjectLike(token_with_locations);
 
         Ok(match self.macros.insert(key.to_owned(), item) {
-            Some(_) => MacroManipulationResult::AlreadyExist, // Key was already present
-            None => MacroManipulationResult::Success,         // Key was added successfully
+            Some(_) => AddMacroResult::AlreadyExist, // Key was already present
+            None => AddMacroResult::Success,         // Key was added successfully
         })
     }
 
@@ -531,7 +530,7 @@ impl MacroMap {
         file_number: usize,
         key: &str,
         definition: &[TokenWithRange], // Unexpanded tokens with ranges.
-    ) -> MacroManipulationResult {
+    ) -> AddMacroResult {
         let token_with_locations: Vec<TokenWithLocation> = definition
             .iter()
             .map(|token_with_range| {
@@ -540,11 +539,29 @@ impl MacroMap {
             })
             .collect();
 
-        let macro_definition = MacroDefinition::ObjectLike(token_with_locations);
-
-        match self.macros.insert(key.to_owned(), macro_definition) {
-            Some(_) => MacroManipulationResult::AlreadyExist, // Key was already present
-            None => MacroManipulationResult::Success,         // Key was added successfully
+        match self.macros.get(key) {
+            Some(existing_definition) => {
+                if let MacroDefinition::ObjectLike(existing_token_with_locations) =
+                    existing_definition
+                {
+                    if is_object_like_macro_equal(
+                        &token_with_locations,
+                        existing_token_with_locations,
+                    ) {
+                        AddMacroResult::IdenticalDefinitionAlreadyExist
+                    } else {
+                        AddMacroResult::AlreadyExist
+                    }
+                } else {
+                    AddMacroResult::AlreadyExist
+                }
+            }
+            None => {
+                // Key was not present, add the new definition
+                let macro_definition = MacroDefinition::ObjectLike(token_with_locations);
+                self.macros.insert(key.to_owned(), macro_definition);
+                AddMacroResult::Success
+            }
         }
     }
 
@@ -554,9 +571,9 @@ impl MacroMap {
         &mut self,
         file_number: usize,
         key: &str,
-        parameters: &[String],
+        parameters: &[FunctionParameter],
         definition: &[TokenWithRange], // Unexpanded tokens with ranges.
-    ) -> MacroManipulationResult {
+    ) -> AddMacroResult {
         let token_with_locations: Vec<TokenWithLocation> = definition
             .iter()
             .map(|token_with_range| {
@@ -565,12 +582,34 @@ impl MacroMap {
             })
             .collect();
 
-        let macro_definition =
-            MacroDefinition::FunctionLike(parameters.to_vec(), token_with_locations);
-
-        match self.macros.insert(key.to_owned(), macro_definition) {
-            Some(_) => MacroManipulationResult::AlreadyExist, // Key was already present
-            None => MacroManipulationResult::Success,         // Key was added successfully
+        match self.macros.get(key) {
+            Some(existing_definition) => {
+                if let MacroDefinition::FunctionLike(
+                    existing_parameters,
+                    existing_token_with_locations,
+                ) = existing_definition
+                {
+                    if is_function_like_macro_equal(
+                        parameters,
+                        &token_with_locations,
+                        existing_parameters,
+                        existing_token_with_locations,
+                    ) {
+                        AddMacroResult::IdenticalDefinitionAlreadyExist
+                    } else {
+                        AddMacroResult::AlreadyExist
+                    }
+                } else {
+                    AddMacroResult::AlreadyExist
+                }
+            }
+            None => {
+                // Key was not present, add the new definition
+                let macro_definition =
+                    MacroDefinition::FunctionLike(parameters.to_vec(), token_with_locations);
+                self.macros.insert(key.to_owned(), macro_definition);
+                AddMacroResult::Success
+            }
         }
     }
 
@@ -579,12 +618,13 @@ impl MacroMap {
     }
 
     /// Remove the definition for the given key.
-    /// Returns `MacroManipulationResult::Success` if the key was present and removed,
-    /// `MacroManipulationResult::NotFound` otherwise.
-    pub fn remove(&mut self, key: &str) -> MacroManipulationResult {
+    /// Returns:
+    /// - `RemoveMacroResult::Success` if the key was present and removed.
+    /// - `RemoveMacroResult::NotFound` otherwise.
+    pub fn remove(&mut self, key: &str) -> RemoveMacroResult {
         match self.macros.remove(key) {
-            Some(_) => MacroManipulationResult::Success, // Key was present and removed
-            None => MacroManipulationResult::NotFound,   // Key was not present
+            Some(_) => RemoveMacroResult::Success, // Key was present and removed
+            None => RemoveMacroResult::NotFound,   // Key was not present
         }
     }
 
@@ -599,4 +639,74 @@ impl MacroMap {
             None => false,
         }
     }
+}
+
+fn is_object_like_macro_equal(
+    tokens_left: &[TokenWithLocation],
+    tokens_right: &[TokenWithLocation],
+) -> bool {
+    if tokens_left.len() != tokens_right.len() {
+        return false;
+    }
+
+    for (token1, token2) in tokens_left.iter().zip(tokens_right.iter()) {
+        if token1.token != token2.token {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn is_function_like_macro_equal(
+    parameters_left: &[FunctionParameter],
+    tokens_left: &[TokenWithLocation],
+    parameters_right: &[FunctionParameter],
+    tokens_right: &[TokenWithLocation],
+) -> bool {
+    if parameters_left.len() != parameters_right.len() {
+        return false;
+    }
+
+    if tokens_left.len() != tokens_right.len() {
+        return false;
+    }
+
+    for (param1, param2) in parameters_left.iter().zip(parameters_right.iter()) {
+        if param1 == &FunctionParameter::Variadic && param2 != &FunctionParameter::Variadic {
+            return false;
+        }
+    }
+
+    for (token1, token2) in tokens_left.iter().zip(tokens_right.iter()) {
+        if let TokenWithLocation {
+            token: Token::Identifier(id1),
+            ..
+        } = &token1
+        {
+            let id2 = if let TokenWithLocation {
+                token: Token::Identifier(id2),
+                ..
+            } = &token2
+            {
+                id2
+            } else {
+                return false;
+            };
+
+            let pos1 = parameters_left.iter().position(
+                |param| matches!(param, FunctionParameter::Identifier(name) if name == id1),
+            );
+
+            let pos2 = parameters_right.iter().position(
+                |param| matches!(param, FunctionParameter::Identifier(name) if name == id2),
+            );
+
+            if pos1 != pos2 {
+                return false;
+            }
+        }
+    }
+
+    true
 }

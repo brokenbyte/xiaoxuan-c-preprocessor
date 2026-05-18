@@ -13,6 +13,7 @@ mod processor;
 
 pub mod ast;
 pub mod ast_printer;
+pub mod consts;
 pub mod context;
 pub mod error;
 pub mod linter;
@@ -26,16 +27,3 @@ pub mod source_message;
 pub mod token;
 
 pub use processor::process_source_file;
-
-// ANCPP reserves file number 0 for predefined macros.
-pub const FILE_NUMBER_PREDEFINED: usize = 0;
-
-// ANCPP automatically assigns file numbers to **header files**, starting from 1
-// (file number 0 is reserved for predefined macros).
-//
-// However, the number of **source files** are specified manually using
-// the `source_file_number` parameter of function `process_source_file`.
-//
-// To avoid conflicts with header files, this file number should be greater than
-// or equal to `FILE_NUMBER_SOURCE_FILE_BEGIN`, which is defined as 65536.
-pub const FILE_NUMBER_SOURCE_FILE_BEGIN: usize = 2_usize.pow(16);
